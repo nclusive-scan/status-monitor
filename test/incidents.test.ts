@@ -238,7 +238,7 @@ void test("an ack link of a contact removed from the policy no longer acknowledg
     { reply: "Already acknowledged by Primary On-call.", changed: false });
 });
 
-void test("/api/status reads no run history or logs and is cached; the failure list uses its partial index", () => {
+void test("/api/status reads no run history or logs (only the one-row-per-check latest results) and is cached; the failure list uses its partial index", () => {
   const storage = sqliteStorage();
   const { store } = newStore(storage);
   openSignup(store);
@@ -263,8 +263,10 @@ void test("/api/status reads no run history or logs and is cached; the failure l
   const loaded = { ok: true, config: monitorConfig } as const;
   publicSnapshot(watched, loaded, T0 + 2 * MINUTE);
   assert.ok(seen.length > 0);
-  assert.deepEqual(seen.filter((query) => /check_results|check_latest|outbox|incident_events|\bruns\b/.test(query)), [],
-    "the public path touches only meta, components, component_hourly and incidents");
+  assert.deepEqual(seen.filter((query) => /check_results|outbox|incident_events|\bruns\b/.test(query)), [],
+    "the public path touches only meta, components, component_hourly, check_latest and incidents");
+  // check_latest holds one row per configured check (its primary key), so the public check list is a bounded read.
+  assert.deepEqual(seen.filter((query) => /check_latest/.test(query)), ["SELECT * FROM check_latest ORDER BY check_id"]);
   assert.ok(seen.some((query) => /FROM component_hourly/.test(query) && /latency_max/.test(query)), "the latency history comes from the rollups");
   const full = fullSnapshot(watched, loaded, T0 + 2 * MINUTE);
   assert.ok(full.notifications.length > 0, "the operator view still has everything");

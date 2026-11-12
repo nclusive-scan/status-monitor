@@ -1,7 +1,9 @@
 // Public and private projections of the monitor's state.
 //   Public (/api/status, anyone): per-component status, uptime and history (30 days of daily uptime, 24 hours of hourly
-//   latency), incidents with title, start, acknowledged yes/no and
-//   resolution. Never URLs, check details, deep payloads, contacts, numbers, addresses or error codes. Only components
+//   latency), the operations checked for it (each check's name, kind, status, response time and when it last ran, with
+//   a deep check's sub-checks listed by id), the rules that open and resolve an incident, and incidents with title,
+//   start, impact (outage or partial outage), acknowledged yes/no and resolution. Never URLs, hostnames, detail or error codes, deep values or release
+//   data, contacts, numbers or addresses. Only components
 //   with public: true: a private component's status, uptime, incidents and maintenance windows are left out, and so is
 //   its part in the overall status. With no public component the overall status is "none" (the page's empty state).
 //   Private (/api/private, STATUS_VIEW_KEY): everything an operator needs, with contacts masked (last 4 digits of a
@@ -32,6 +34,12 @@ export interface PublicSnapshot {
   readonly incidents: readonly IncidentRow[];
   /** Maintenance windows active now or starting within a week. */
   readonly maintenance: readonly MaintenanceWindow[];
+  /** The latest result per check (one small row each). */
+  readonly checks: readonly CheckLatest[];
+  /** The configured checks' ids in configuration order, for listing them; empty under a refused configuration. */
+  readonly checkOrder: readonly string[];
+  /** Consecutive failing runs that open an incident and passing runs that resolve it; null under a refused configuration. */
+  readonly rules: { readonly openAfterFailures: number; readonly resolveAfterPasses: number } | null;
 }
 
 /** Where the effective configuration comes from (private view only). */
@@ -56,7 +64,6 @@ export interface ConfigView {
 /** The operator view adds the latest result per check, recent failures and the notification and event logs. */
 export interface Snapshot extends PublicSnapshot {
   readonly config: ConfigView;
-  readonly checks: readonly CheckLatest[];
   readonly recentFailures: readonly { checkId: string; status: Status; detail: string; observedAt: number; latencyMs: number }[];
   readonly notifications: readonly OutboxRow[];
   readonly events: readonly IncidentEvent[];
@@ -101,7 +108,14 @@ export interface PublicStatus {
   readonly brand: string;
   /** "none": no component is public (the page shows an empty state, neither operational nor unknown). */
   readonly overall: Status | "unknown" | "none";
-  readonly monitor: { readonly lastRunAt: string | null; readonly stale: boolean };
+  readonly monitor: {
+    readonly lastRunAt: string | null;
+    readonly stale: boolean;
+    /** With no run for this long the monitor counts as stale and every status reads "unknown". */
+    readonly staleAfterSeconds: number;
+    /** How many failing runs in a row open an incident and passing runs resolve it (null: configuration refused). */
+    readonly rules: { readonly openAfterFailures: number; readonly resolveAfterPasses: number } | null;
+  };
   readonly components: readonly {
     readonly id: string;
     readonly name: string;
@@ -114,6 +128,10 @@ export interface PublicStatus {
     readonly latency: readonly HourLatency[];
     /** Set while a maintenance window covers the component: its end ("Maintenance until ..."). */
     readonly maintenanceUntil: string | null;
+    /** When any check last reported on this component. */
+    readonly lastCheckedAt: string | null;
+    /** What is checked for this component, in configuration order. */
+    readonly checks: readonly PublicCheck[];
   }[];
   /** Windows active now or starting within a week. The note is private (it is free text); the page shows the times. */
   readonly maintenance: readonly {
@@ -126,11 +144,68 @@ export interface PublicStatus {
     readonly id: string;
     readonly component: string;
     readonly title: string;
+    /** The worst it got while open: "down" (an outage) or "degraded" (a partial outage). */
+    readonly impact: "down" | "degraded";
     readonly startedAt: string;
     readonly acknowledged: boolean;
     readonly resolved: boolean;
     readonly resolvedAt: string | null;
   }[];
+}
+
+/**
+ * One operation checked for a component. "part" is a sub-check of a deep check (the watched platform's own list:
+ * database, migrations, ...). Latency is the check's own round trip, or the sub-check's as the platform measured it.
+ */
+export interface PublicCheck {
+  readonly id: string;
+  readonly kind: "http" | "dns" | "deep" | "part";
+  readonly status: Status | "unknown";
+  readonly latencyMs: number | null;
+  readonly checkedAt: string | null;
+}
+
+const kindOf = (type: string): PublicCheck["kind"] => (type === "http" || type === "dns" ? type : "deep");
+
+/** A deep check's sub-check list from its stored payload ({ checks: [{ id, status, latencyMs }] }); anything else is []. */
+function deepParts(data: unknown): { id: string; status: Status; latencyMs: number }[] {
+  if (typeof data !== "object" || data === null) return [];
+  const list: unknown = Reflect.get(data, "checks");
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) return [];
+    const id: unknown = Reflect.get(entry, "id"), status: unknown = Reflect.get(entry, "status"), latency: unknown = Reflect.get(entry, "latencyMs");
+    if (typeof id !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(id)) return [];
+    if (status !== "ok" && status !== "degraded" && status !== "down") return [];
+    return [{ id, status, latencyMs: typeof latency === "number" && Number.isFinite(latency) ? Math.round(latency) : 0 }];
+  });
+}
+
+/**
+ * A component's checks: its own check rows (in configuration order), and under each deep check the sub-checks the
+ * platform reported that no other component claims (a mapped sub-check has its own row, on its own component). A stale
+ * monitor shows every status as unknown, like the component itself.
+ */
+function componentChecks(snapshot: PublicSnapshot, componentId: string, stale: boolean): PublicCheck[] {
+  const order = new Map(snapshot.checkOrder.map((id, index) => [id, index]));
+  const rank = (checkId: string): number => order.get(checkId) ?? order.get(checkId.split(".")[0] ?? "") ?? order.size;
+  const rowIds = new Set(snapshot.checks.map((row) => row.checkId));
+  const shown = (status: Status, inconclusive: boolean): Status | "unknown" => (stale || inconclusive ? "unknown" : status);
+  return snapshot.checks
+    .filter((row) => row.componentId === componentId && (order.has(row.checkId) || order.has(row.checkId.split(".")[0] ?? "")))
+    .toSorted((a, b) => (rank(a.checkId) === rank(b.checkId) ? a.checkId.localeCompare(b.checkId) : rank(a.checkId) - rank(b.checkId)))
+    .flatMap((row): PublicCheck[] => {
+      const checkedAt = iso(row.observedAt);
+      const own: PublicCheck = {
+        id: row.checkId, kind: row.checkId.includes(".") ? "part" : kindOf(row.type), status: shown(row.status, row.inconclusive),
+        latencyMs: row.inconclusive ? null : row.latencyMs, checkedAt,
+      };
+      if (row.type !== "deep" || row.checkId.includes(".")) return [own];
+      const parts = deepParts(row.data).filter((part) => !rowIds.has(`${row.checkId}.${part.id}`)).map((part): PublicCheck => ({
+        id: `${row.checkId}.${part.id}`, kind: "part", status: shown(part.status, false), latencyMs: part.latencyMs, checkedAt,
+      }));
+      return [own, ...parts];
+    });
 }
 
 /** What /api/status shows: the public components only. */
@@ -159,6 +234,8 @@ function projection(snapshot: PublicSnapshot, publicOnly: boolean): PublicStatus
       history,
       latency,
       maintenanceUntil: iso(activeWindow(snapshot.maintenance, config.id, snapshot.now)?.endsAt ?? null),
+      lastCheckedAt: iso(state.lastObservedAt),
+      checks: componentChecks(snapshot, config.id, monitor.stale),
     };
   });
   const known = components.flatMap((component) => (component.status === "unknown" ? [] : [component.status]));
@@ -169,7 +246,7 @@ function projection(snapshot: PublicSnapshot, publicOnly: boolean): PublicStatus
     generatedAt: new Date(snapshot.now).toISOString(),
     brand: snapshot.brand,
     overall: none ? "none" : known.length === 0 ? "unknown" : worst(known),
-    monitor,
+    monitor: { ...monitor, staleAfterSeconds: STALE_AFTER_MS / 1000, rules: snapshot.rules },
     components,
     maintenance: windows.map((window) => ({
       components: window.components, startsAt: new Date(window.startsAt).toISOString(), endsAt: new Date(window.endsAt).toISOString(),
@@ -179,6 +256,7 @@ function projection(snapshot: PublicSnapshot, publicOnly: boolean): PublicStatus
       id: incident.id,
       component: names.get(incident.componentId) ?? incident.componentId,
       title: incident.title,
+      impact: incident.peakStatus === "degraded" ? "degraded" as const : "down" as const,
       startedAt: new Date(incident.openedAt).toISOString(),
       acknowledged: incident.acknowledgedAt !== null,
       resolved: incident.resolvedAt !== null,

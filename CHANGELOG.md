@@ -3,6 +3,35 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org).
 
+## 0.3.0 - 2026-11-12
+
+### Changed
+
+- The public status page answers two questions first: is everything working, and is there anything to know. One
+  status sentence with when it was last updated, then current notices (open problems and planned maintenance, in
+  plain words), then every service as one row with its status, what is not working when it is not, and 30 daily
+  uptime bars, then past incidents. Plain wording throughout ("Partial outage", "Being fixed"), times with their zone.
+- Built as a React app with Vite and Tailwind CSS v4 on [shadcn/ui](https://ui.shadcn.com) components. The operator
+  view keeps the charts, from [TUFFUI](https://tuffui.com) (stat grid, uptime gauge, response-time chart), restyled
+  as plain hairline cards. Line icons from Lucide are stored in the repository as SVG; no icon library loads.
+- The operator view moved to its own path, `/operator`, linked quietly from the footer, so it can sit behind
+  Cloudflare Access. It loads only there.
+- The CSP is unchanged: the build emits only files and refuses a page with inline script or style.
+- The acknowledgement pages' `styles.css` now carries only what they use, restyled to match.
+- `spec/PROTOCOL.md`: a status page MAY show a deep check's sub-check ids, statuses and latencies publicly; `value`,
+  `detail` and `release` stay private.
+
+### Added
+
+- Operator sign-in through Cloudflare Access: with `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` set, `/api/private` accepts
+  the token Access attaches once someone has signed in (Google or any identity provider), verified against the team's
+  keys. The operator key still works.
+- Branding: a logo and favicons (`favicon.ico`, `favicon.svg`, `apple-touch-icon.png`), neutral by default and
+  replaced at build time from `STATUS_PAGE_BRAND_DIR`.
+- `/api/status` gives each component `lastCheckedAt` and `checks` (id, kind `http`/`dns`/`deep`/`part`, status,
+  latency, `checkedAt`), each incident its `impact` (`down` or `degraded`), and `monitor` gives `staleAfterSeconds` and
+  `rules`. The public path reads `check_latest` (one row per check); still no run history or logs.
+
 ## 0.2.0 - 2026-11-12
 
 ### Added

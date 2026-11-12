@@ -169,8 +169,10 @@ by failing the request: the server answers `200` with that check `down`.
 
 **What it may expose.** The health answer MUST hold only counts, ages, latencies, the release and fixed codes. It MUST
 NOT hold names, email addresses, phone numbers, identifiers of people or records, payloads, query text or error
-messages. A monitor or status page MUST NOT show `checks` publicly. The reference monitor keeps them to its
-authenticated operator view.
+messages. A monitor or status page MUST NOT show a sub-check's `value` or `detail`, or the `release`, publicly. It
+MAY show each sub-check's `id`, `status` and `latencyMs`: the reference monitor's public page lists them, by id, as the
+operations checked for a public component (`notification_backlog` reads as "Notification backlog"). A server SHOULD
+therefore give its sub-checks ids it is willing to publish. The full answer stays in the authenticated operator view.
 
 **Timing.** The monitor waits up to the check's `timeoutMs` (default 10 s, at most 30 s). A server SHOULD bound its own
 work well inside that.

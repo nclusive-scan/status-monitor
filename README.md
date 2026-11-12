@@ -15,7 +15,9 @@ besides the monitor itself.
   who has it.
 - **A weekly paging drill**, delivery confirmation through Twilio status callbacks, opt-out handling (STOP/START), and,
   with the optional platform integration, maintenance windows.
-- **A status page** on Workers Static Assets: public status, uptime and incidents, plus an operator view behind a key.
+- **A status page** on Workers Static Assets: whether everything is working, current problems and planned
+  maintenance, every service's last 30 days and past incidents, plus an operator view behind Cloudflare Access or a
+  key.
 - **Fails closed**: an invalid configuration stops the run, so an outside dead-man's switch notices. The monitor never
   limps along half-configured.
 
@@ -29,6 +31,7 @@ It was built for, and is used by, [Nclusive](https://getnclusive.com).
 - [Architecture](#architecture)
 - [Quick start (standalone)](#quick-start-standalone)
 - [Configuration reference](#configuration-reference)
+- [Operator sign-in](#operator-sign-in)
 - [Escalation](#escalation)
 - [Platform integration (optional)](#platform-integration-optional)
 - [Operations](#operations)
@@ -103,7 +106,7 @@ somewhere other than Cloudflare). See [What this cannot detect](#what-this-canno
 | `worker/signature.ts`, `spec/` | The signed protocol, its specification and the shared test vectors |
 | `worker/config*.ts`, `worker/brand.ts` | Strict config loading; `BRAND_NAME` |
 | `worker/platform-config.ts`, `worker/report.ts` | Optional platform integration: config pull, revision acceptance, report |
-| `status-page/` | The status page Worker: `worker/router.ts`, `src/` (page script), `public/` (HTML, CSS, `_headers`) |
+| `status-page/` | The status page Worker (`worker/router.ts`) and the page: a React app in `src/` built with Vite, on [shadcn/ui](https://ui.shadcn.com) components, with [TUFFUI](https://tuffui.com) charts in the operator view (`src/components/ui`, added with the shadcn CLI, `components.json`), line icons from Lucide stored as SVG (`src/icons`, `scripts/icons.ts`), and `public/` (fonts, the default `brand/`, `_headers`, the acknowledgement pages' `styles.css`) |
 | `config/*.example.json` | Example targets, escalation policy and platform configuration document |
 
 ## Quick start (standalone)
@@ -160,6 +163,10 @@ account with a sending number or Messaging Service. Email-only paging works with
    npx wrangler deploy --config status-page/wrangler.jsonc
    ```
 
+   To use your own logo and favicons, point `STATUS_PAGE_BRAND_DIR` at a directory holding `logo.svg` (shown on
+   light), `logo-dark.svg` (on dark), `favicon.svg`, `favicon.ico` and `apple-touch-icon.png` (180 px) when you build:
+   `STATUS_PAGE_BRAND_DIR=../my-brand npm run build:status-page`. The logo sits 20 px high beside `BRAND_NAME`.
+
 8. **Point Twilio at it.** On the sending number, set the inbound messaging webhook to
    `https://<your status host>/hooks/twilio` (HTTP POST). It must equal `TWILIO_WEBHOOK_URL` exactly, because the
    signature is checked against that URL.
@@ -198,6 +205,8 @@ page shows the monitor as delayed, and your outside heartbeat alarms.
 | `PLATFORM_CONFIG_URL` | no | unset (standalone) | `https://<host>/api/v2/monitor/config`. Turns on [platform integration](#platform-integration-optional) |
 | `DEEP_CHECK_HOSTS` | for a deep check in standalone mode | the host of `PLATFORM_CONFIG_URL` | Comma-separated `host` or `host:port` values that a deep check may call (case-insensitive, `:443` ignored; a stray comma makes the whole value unusable) |
 | `DNS_SECONDARY_RESOLVER` | no | none | A second DNS-over-HTTPS JSON resolver (for example `https://dns.google/resolve`), asked when Cloudflare's fails |
+| `ACCESS_TEAM_DOMAIN` | no | unset | Your Cloudflare Access team domain, `<team>.cloudflareaccess.com`. With `ACCESS_AUD`, [operator sign-in through Access](#operator-sign-in) |
+| `ACCESS_AUD` | no | unset | The Access application's audience (AUD) tag, 64 hex characters |
 
 Every request the monitor sends (checks, config pull, report) carries a `User-Agent` of `status-monitor/1` and this
 repository's URL, so the services you watch can tell it apart in their logs. If you run a modified fork, change
@@ -262,6 +271,19 @@ Each component sets `pageOn` (`down` by default, or `degraded`), `alert` (`page`
 informational email to the first tier on open and one on resolve; `none` records only) and `public` (`true` by default;
 `false` keeps it off the public page). An incident opens after `openAfterFailures` consecutive failing runs (or when a
 component flaps) and resolves after `resolveAfterPasses` passing runs, so a single blip never pages anyone.
+
+## Operator sign-in
+
+The operator view lives at `/operator`, linked quietly from the page footer. There are two ways in:
+
+- **Cloudflare Access (recommended).** In Zero Trust, add a self-hosted application for your status hostname with two
+  paths, `/operator` and `/api/private`, an identity provider (Google, for example) and a policy naming who may sign in.
+  Set `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` on the monitor. Access then asks people to sign in before the page loads,
+  and the monitor verifies the token Access attaches to every `/api/private` request (RS256 with the team's published
+  keys, the application's audience and issuer, and its expiry) before answering. A token that does not verify is
+  refused, and so is every token while the team's keys cannot be read.
+- **The operator key** (`STATUS_VIEW_KEY`). The page asks for it when there is no Access sign-in. Keep it as a
+  break-glass way in even with Access; with Access in front of `/api/private`, only signed-in people can reach it.
 
 ## Escalation
 
@@ -399,14 +421,17 @@ Cloudflare's network. Probes leave from varying Cloudflare locations, so your fi
 - The monitor Worker has no public route. The status page Worker is its only caller and forwards only the five paths
   above, with only the headers each one needs.
 - `/api/status` is sanitized: component names, status, uptime (with 30 days of daily uptime and 24 hours of hourly
-  latency per component), incident titles and times, and whether an incident is acknowledged. `/api/private` requires
+  latency per component), the operations checked for each public component (each check's id, kind, status, response
+  time and when it last ran, a deep check's sub-checks by id), the rules that open and resolve an incident, incident
+  titles and times, and whether an incident is acknowledged. Never URLs, hostnames, detail codes, deep values or
+  release data. `/api/private` requires
   the operator key in an `Authorization` header, compared in constant time. The page keeps the key in `sessionStorage`
   only, never in a URL.
 - Acknowledgement links are HMAC-signed, expire, and name one incident and one contact. Opening a link only shows a
   confirm page, so link scanners cannot acknowledge anything.
 - Inbound SMS is accepted only with a valid `X-Twilio-Signature` for the exact public URL, and only from a number in the
   policy.
-- The status page loads nothing external and sets a strict CSP.
+- The status page loads nothing external and sets a strict CSP. With Cloudflare Access configured, the operator view and `/api/private` sit behind your identity provider, and the monitor verifies Access's token itself.
 
 Please report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
 

@@ -2,3 +2,8 @@ status-monitor
 Copyright 2026 Nclusive
 
 This product was built for, and is used by, Nclusive.
+
+The status page's components in status-page/src/components/ui and status-page/src/lib/motion-tokens.ts come from
+TUFFUI (https://tuffui.com), MIT License, Copyright (c) 2026 TUFFUI contributors: see
+status-page/src/components/ui/LICENSE-TUFFUI. The Geist fonts are under the SIL Open Font License
+(status-page/public/fonts/OFL.txt).
