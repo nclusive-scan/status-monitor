@@ -28,6 +28,6 @@
     "jiti": "2.7.0",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.2",
-    "wrangler": "4.154.0"
+    "wrangler": "4.158.0"
   }
 }
