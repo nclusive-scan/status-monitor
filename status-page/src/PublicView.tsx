@@ -10,7 +10,7 @@ import { useNow } from "./hooks.ts";
 import type { Icon } from "./icons/index.tsx";
 import { AlertTriangle, CheckCircle, HelpCircle, Info, Wrench, XCircle } from "./icons/index.tsx";
 import type { ComponentView, DayView, IncidentView, MaintenanceView, Shown, Summary } from "./model.ts";
-import { LABEL, UNAVAILABLE_HEADLINE } from "./model.ts";
+import { LABEL, notWorking, UNAVAILABLE_HEADLINE } from "./model.ts";
 
 const ICON: Readonly<Record<Shown, Icon>> = {
   ok: CheckCircle, degraded: AlertTriangle, down: XCircle, unknown: HelpCircle, maintenance: Wrench, none: Info,
@@ -143,10 +143,7 @@ function UptimeBars({ component }: { component: ComponentView }): React.JSX.Elem
 function ServiceRow({ component, now }: { component: ComponentView; now: number }): React.JSX.Element {
   const StatusIcon = ICON[component.shown];
   const trouble = component.shown === "down" || component.shown === "degraded";
-  // What is not working, by name; a deep check that only summarises its failing parts is left out.
-  const failing = component.checks.filter((check) => check.shown === "down" || check.shown === "degraded")
-    .filter((check) => check.kind !== "deep" || !component.checks.some((other) => other.kind === "part" && other.shown !== "ok"))
-    .map((check) => check.name);
+  const failing = notWorking(component);
   return (
     <li className="p-4">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

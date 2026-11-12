@@ -128,3 +128,25 @@ void test("the status page forwards the Access token to /api/private, and to not
   assert.equal(seen[0]?.headers.get("cf-access-jwt-assertion"), "tok");
   assert.equal(seen[1]?.headers.get("cf-access-jwt-assertion"), null, "the public route gets no identity");
 });
+
+void test("concurrent requests share one certs fetch; a failing endpoint is retried at most once a minute", async () => {
+  clearAccessCache();
+  const pair = await keyPair();
+  const key = await jwk(pair, "k1");
+  const { deps, state, at } = certs(() => [key]);
+  const token = await sign(pair, { alg: "RS256", kid: "k1" }, claims());
+  const results = await Promise.all(Array.from({ length: 5 }, () => verifyAccessToken(token, SETTINGS, deps)));
+  assert.ok(results.every((result) => result !== null));
+  assert.equal(state.fetches, 1, "one fetch for five concurrent requests");
+
+  clearAccessCache();
+  state.fetches = 0;
+  state.fail = true;
+  for (let index = 0; index < 4; index += 1) assert.equal(await verifyAccessToken(token, SETTINGS, deps), null);
+  assert.equal(state.fetches, 1, "an outage is not hammered: failed attempts count toward the limit");
+  state.fail = false;
+  at.now += 61_000;
+  assert.notEqual(await verifyAccessToken(await sign(pair, { alg: "RS256", kid: "k1" }, claims({ exp: at.now / 1000 + 3600 })), SETTINGS, deps), null,
+    "after a minute it tries again and recovers");
+  assert.equal(state.fetches, 2);
+});

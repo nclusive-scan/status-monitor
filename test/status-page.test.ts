@@ -6,8 +6,8 @@ import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import type { MonitorBinding, ResponseCache, RouterDeps } from "../status-page/worker/router.ts";
 import { handle, MAX_BODY_BYTES } from "../status-page/worker/router.ts";
-import type { PublicStatus } from "../status-page/src/model.ts";
-import { band, checkName, dayViews, DEFAULT_SITE_NAME, duration, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
+import type { CheckView, PublicStatus } from "../status-page/src/model.ts";
+import { band, checkName, dayViews, notWorking, DEFAULT_SITE_NAME, duration, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
 import { focusAfterSwap, monitorFacts, refreshFailedText, warningText } from "../status-page/src/operator.ts";
 import { ADOPTED_STATUS_HOST, adoptedMonitorWrangler, adoptedStatusPageWrangler } from "./support/adopted.ts";
 
@@ -524,4 +524,16 @@ void test("page model: checks are named for people, and the affected list names 
   const older = summarize({ ...data, monitor: { lastRunAt: at, stale: false }, components: withoutChecks }, fmt);
   assert.deepEqual([older.rules, older.staleAfterSeconds, older.components[0]?.checks, older.components[0]?.lastCheckedAt], [null, 300, [], null],
     "an older monitor without checks still renders");
+});
+
+void test("page model: \"not working\" names failing parts, and a failing deep check only when none of its own parts explains it", () => {
+  const check = (id: string, kind: "http" | "deep" | "part", shown: "ok" | "degraded" | "down" | "unknown"): CheckView => ({
+    id, name: checkName(id), kind, kindLabel: kind, shown, latencyMs: null, checkedAt: null,
+  });
+  assert.deepEqual(notWorking({ checks: [check("web_http", "http", "ok"), check("deep", "deep", "down"), check("deep.publications", "part", "down")] }),
+    ["Publications"], "the part explains the deep check");
+  assert.deepEqual(notWorking({ checks: [check("deep", "deep", "down"), check("deep.database", "part", "ok"), check("other.queue", "part", "down")] }),
+    ["Deep", "Queue"], "a failing part of another check does not hide this one");
+  assert.deepEqual(notWorking({ checks: [check("deep", "deep", "degraded"), check("deep.migrations", "part", "unknown")] }), ["Deep"],
+    "an unknown part explains nothing");
 });

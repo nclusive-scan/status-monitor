@@ -281,6 +281,18 @@ function checkViews(checks: readonly PublicCheck[] | undefined, stale: boolean):
 const isRules = (value: unknown): value is Rules =>
   isRecord(value) && typeof Reflect.get(value, "openAfterFailures") === "number" && typeof Reflect.get(value, "resolveAfterPasses") === "number";
 
+const failingCheck = (check: CheckView): boolean => check.shown === "down" || check.shown === "degraded";
+
+/**
+ * What is not working in a component, by name. A deep check is left out when one of its own parts is failing (the part
+ * says what is wrong; the deep check only repeats it), and kept otherwise.
+ */
+export function notWorking(component: Pick<ComponentView, "checks">): string[] {
+  return component.checks.filter(failingCheck)
+    .filter((check) => check.kind !== "deep" || !component.checks.some((part) => part.kind === "part" && part.id.startsWith(`${check.id}.`) && failingCheck(part)))
+    .map((check) => check.name);
+}
+
 export function summarize(data: PublicStatus, format: Format): Summary {
   const monitorFacts = {
     lastRunAt: typeof data.monitor.lastRunAt === "string" ? data.monitor.lastRunAt : null, stale: data.monitor.stale,

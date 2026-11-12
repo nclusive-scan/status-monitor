@@ -43,10 +43,30 @@ interface Certs {
 
 /** Per team domain, for the isolate's lifetime. */
 const cache = new Map<string, Certs>();
+/** When a fetch was last started, successful or not: refetches are rate-limited on attempts, not successes. */
+const attempted = new Map<string, number>();
+/** One fetch at a time per team: concurrent requests share it. */
+const inFlight = new Map<string, Promise<Certs | null>>();
 
 /** For tests: forget every fetched key set. */
 export function clearAccessCache(): void {
   cache.clear();
+  attempted.clear();
+  inFlight.clear();
+}
+
+function fetchCerts(settings: AccessSettings, deps: AccessDeps): Promise<Certs | null> {
+  const running = inFlight.get(settings.teamDomain);
+  if (running !== undefined) return running;
+  attempted.set(settings.teamDomain, deps.now());
+  const started = loadCerts(settings, deps).then((fresh) => {
+    if (fresh !== null) cache.set(settings.teamDomain, fresh);
+    return fresh;
+  }).finally(() => {
+    inFlight.delete(settings.teamDomain);
+  });
+  inFlight.set(settings.teamDomain, started);
+  return started;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -108,17 +128,16 @@ async function keyFor(kid: string, settings: AccessSettings, deps: AccessDeps): 
   const now = deps.now();
   let certs = cache.get(settings.teamDomain) ?? null;
   const expired = certs === null || now - certs.fetchedAt > CERTS_TTL_MS;
-  const unknownKid = certs !== null && !certs.keys.has(kid) && now - certs.fetchedAt > REFETCH_AFTER_MS;
-  if (expired || unknownKid) {
-    const fresh = await loadCerts(settings, deps);
-    if (fresh !== null) {
-      cache.set(settings.teamDomain, fresh);
-      certs = fresh;
-    } else if (expired) {
-      return null;
-    }
+  const unknownKid = certs !== null && !certs.keys.has(kid);
+  // At most one attempt a minute, failed attempts included, so an outage or a stream of unknown kids cannot turn
+  // every request into a certs fetch.
+  const mayFetch = now - (attempted.get(settings.teamDomain) ?? Number.NEGATIVE_INFINITY) > REFETCH_AFTER_MS || inFlight.has(settings.teamDomain);
+  if ((expired || unknownKid) && mayFetch) {
+    const fresh = await fetchCerts(settings, deps);
+    if (fresh !== null) certs = fresh;
   }
-  return certs?.keys.get(kid) ?? null;
+  if (certs === null || now - certs.fetchedAt > CERTS_TTL_MS) return null;
+  return certs.keys.get(kid) ?? null;
 }
 
 /** The signed-in identity, or null for anything that does not verify. */
