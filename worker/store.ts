@@ -243,10 +243,16 @@ export class MonitorStore extends OutboxStore {
         const step = stepComponent(component, before, results, rules, now, { suppressOpen: window !== null });
         if (step.runStatus === null) continue;
         if (step.suppressed && window !== null) this.setMeta(`maintenance_suppressed:${component.id}`, window.id);
+        // One latency sample per run: the slowest conclusive result that was not down (a timeout would skew the chart).
+        const latencies = results.filter((result) => result.componentId === component.id && !result.inconclusive && result.status !== "down")
+          .map((result) => Math.max(0, Math.round(result.latencyMs)));
+        const sample = latencies.length === 0 ? null : Math.max(...latencies);
         this.rows(
-          `INSERT INTO component_hourly (component_id, hour, total, up) VALUES (?, ?, 1, ?)
-           ON CONFLICT (component_id, hour) DO UPDATE SET total = total + 1, up = up + excluded.up`,
-          component.id, Math.floor(now / HOUR), step.runStatus === "down" ? 0 : 1,
+          `INSERT INTO component_hourly (component_id, hour, total, up, latency_sum, latency_count, latency_max) VALUES (?, ?, 1, ?, ?, ?, ?)
+           ON CONFLICT (component_id, hour) DO UPDATE SET total = total + 1, up = up + excluded.up,
+           latency_sum = latency_sum + excluded.latency_sum, latency_count = latency_count + excluded.latency_count,
+           latency_max = MAX(latency_max, excluded.latency_max)`,
+          component.id, Math.floor(now / HOUR), step.runStatus === "down" ? 0 : 1, sample ?? 0, sample === null ? 0 : 1, sample ?? 0,
         );
         let state = step.state;
         if (step.transition === "open") {

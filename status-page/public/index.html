@@ -6,60 +6,93 @@
 <meta name="color-scheme" content="light dark">
 <meta name="description" content="Live service status.">
 <title>Status</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%231a7f4b'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%230ca30c'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/styles.css">
 <script type="module" src="/app.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to status</a>
 <header class="masthead">
-  <div class="page">
+  <div class="page masthead-row">
     <p class="brand" id="brand">Status</p>
-    <nav aria-label="Views">
-      <button type="button" class="link" id="show-public" aria-pressed="true">Status</button>
-      <button type="button" class="link" id="show-private" aria-pressed="false">Operator view</button>
-    </nav>
+    <div class="masthead-actions">
+      <nav aria-label="Views" class="segmented">
+        <button type="button" class="link" id="show-public" aria-pressed="true">Status</button>
+        <button type="button" class="link" id="show-private" aria-pressed="false">Operator view</button>
+      </nav>
+      <button type="button" class="icon-button" id="theme-toggle" aria-label="Switch to dark theme">
+        <svg viewBox="0 0 16 16" aria-hidden="true" class="icon"><path d="M8 1.5a6.5 6.5 0 1 0 6.5 6.5A5 5 0 0 1 8 1.5Z"/></svg>
+      </button>
+    </div>
   </div>
 </header>
 <main id="main" class="page" tabindex="-1">
   <section id="public-view" aria-labelledby="overall-heading">
-    <div id="overall" class="banner" data-status="unknown">
-      <h1 id="overall-heading">Checking status…</h1>
-      <p id="freshness" class="muted"></p>
+    <div id="overall" class="card hero" data-status="unknown">
+      <div class="hero-head">
+        <span class="hero-mark" aria-hidden="true"><span class="hero-dot"></span></span>
+        <div class="hero-text">
+          <h1 id="overall-heading">Checking status…</h1>
+          <p id="freshness" class="muted"></p>
+        </div>
+      </div>
+      <dl id="stats" class="stats" hidden>
+        <div class="stat"><dt>Uptime · 30 days</dt><dd id="stat-uptime">—</dd></div>
+        <div class="stat"><dt>Avg response · 24 h</dt><dd id="stat-latency">—</dd></div>
+        <div class="stat"><dt>Operational</dt><dd id="stat-operational">—</dd></div>
+        <div class="stat"><dt>Incidents · 30 days</dt><dd id="stat-incidents">—</dd></div>
+      </dl>
     </div>
     <!-- Announces the overall status only when it changes (app.ts); the freshness line above is not live. -->
     <p id="announce" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
 
-    <section id="components-section" aria-labelledby="components-heading">
-      <h2 id="components-heading">Components</h2>
-      <table class="components">
-        <caption class="visually-hidden">Current status and uptime of each component</caption>
-        <thead>
-          <tr><th scope="col">Component</th><th scope="col">Status</th><th scope="col">24 hours</th><th scope="col">7 days</th><th scope="col">30 days</th></tr>
-        </thead>
-        <tbody id="components"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
-      </table>
+    <section id="components-section" class="card" aria-labelledby="components-heading">
+      <div class="card-head">
+        <div>
+          <h2 id="components-heading">Components</h2>
+          <p class="muted">Daily uptime over the last 30 days</p>
+        </div>
+        <ul class="legend" aria-label="Legend">
+          <li><span class="swatch" data-band="ok"></span>Operational</li>
+          <li><span class="swatch" data-band="degraded"></span>Degraded</li>
+          <li><span class="swatch" data-band="down"></span>Outage</li>
+          <li><span class="swatch" data-band="none"></span>No data</li>
+        </ul>
+      </div>
+      <ul id="components" class="component-list"><li class="muted">Loading…</li></ul>
     </section>
 
-    <section id="maintenance-section" aria-labelledby="maintenance-heading" hidden>
-      <h2 id="maintenance-heading">Scheduled maintenance</h2>
-      <ul id="maintenance" class="incidents"></ul>
+    <section id="latency-section" class="card" aria-labelledby="latency-heading" hidden>
+      <div class="card-head">
+        <div>
+          <h2 id="latency-heading">Response time</h2>
+          <p class="muted">Hourly average over the last 24 hours</p>
+        </div>
+      </div>
+      <ul id="latency" class="latency-grid"></ul>
     </section>
 
-    <section id="open-section" aria-labelledby="open-heading">
-      <h2 id="open-heading">Open incidents</h2>
-      <ul id="open-incidents" class="incidents"><li class="muted">Loading…</li></ul>
+    <section id="maintenance-section" class="card" aria-labelledby="maintenance-heading" hidden>
+      <div class="card-head"><h2 id="maintenance-heading">Scheduled maintenance</h2></div>
+      <ul id="maintenance" class="timeline"></ul>
     </section>
 
-    <section id="history-section" aria-labelledby="history-heading">
-      <h2 id="history-heading">Past 35 days</h2>
-      <ul id="history" class="incidents"><li class="muted">Loading…</li></ul>
-    </section>
+    <div class="split">
+      <section id="open-section" class="card" aria-labelledby="open-heading">
+        <div class="card-head"><h2 id="open-heading">Open incidents</h2></div>
+        <ul id="open-incidents" class="timeline"><li class="muted">Loading…</li></ul>
+      </section>
+
+      <section id="history-section" class="card" aria-labelledby="history-heading">
+        <div class="card-head"><h2 id="history-heading">Past 35 days</h2></div>
+        <ul id="history" class="timeline"><li class="muted">Loading…</li></ul>
+      </section>
+    </div>
   </section>
 
   <section id="private-view" aria-labelledby="private-heading" hidden>
-    <h1 id="private-heading">Operator view</h1>
-    <form id="key-form" class="key-form" autocomplete="off">
+    <h1 id="private-heading" class="view-title">Operator view</h1>
+    <form id="key-form" class="card key-form" autocomplete="off">
       <label for="view-key">Operator key</label>
       <input id="view-key" name="view-key" type="password" autocomplete="off" spellcheck="false" required minlength="32">
       <p class="muted">Kept in this tab only (session storage) and sent as an Authorization header. Never put it in a URL.</p>
@@ -107,6 +140,6 @@
     </div>
   </section>
 </main>
-<footer class="page muted footer">Checked every minute from Cloudflare. Times are in your local time zone.</footer>
+<footer class="page footer"><span>Checked every minute from Cloudflare. Times are in your local time zone.</span><span>Open source: status-monitor</span></footer>
 </body>
 </html>

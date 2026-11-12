@@ -96,6 +96,11 @@ export const MIGRATIONS: readonly string[] = [
   // 8: the incident that took over this one's escalation when its component stopped paging (changeAlertMode), so its
   // earlier pages (ack links, sent and failed outbox rows) still resolve to the group that carries them now.
   `ALTER TABLE incidents ADD COLUMN handed_over_to TEXT;`,
+  // 9: hourly latency for the status page chart: one sample per component per run (its slowest conclusive result that
+  // was not down), summed, counted and maxed per hour. Hours rolled up before this migration have no samples.
+  `ALTER TABLE component_hourly ADD COLUMN latency_sum INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE component_hourly ADD COLUMN latency_count INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE component_hourly ADD COLUMN latency_max INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function migrate(sql: SqlLike): number {

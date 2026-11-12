@@ -1,5 +1,6 @@
 // Public and private projections of the monitor's state.
-//   Public (/api/status, anyone): per-component status and uptime, incidents with title, start, acknowledged yes/no and
+//   Public (/api/status, anyone): per-component status, uptime and history (30 days of daily uptime, 24 hours of hourly
+//   latency), incidents with title, start, acknowledged yes/no and
 //   resolution. Never URLs, check details, deep payloads, contacts, numbers, addresses or error codes. Only components
 //   with public: true: a private component's status, uptime, incidents and maintenance windows are left out, and so is
 //   its part in the overall status. With no public component the overall status is "none" (the page's empty state).
@@ -7,6 +8,8 @@
 //   phone number; first letter and domain of an email address).
 import type { ComponentConfig } from "./config.ts";
 import type { ComponentState } from "./engine.ts";
+import type { ComponentHistory, DayUptime, HourLatency } from "./history.ts";
+import { historySeries } from "./history.ts";
 import type { MaintenanceWindow } from "./maintenance.ts";
 import { activeWindow } from "./maintenance.ts";
 import type { CheckLatest, ContactHealthRow, IncidentEvent, IncidentRow, OutboxRow, PagingHealth, Uptime } from "./store.ts";
@@ -24,6 +27,8 @@ export interface PublicSnapshot {
   readonly configError: string | null;
   readonly components: readonly { readonly config: ComponentConfig; readonly state: ComponentState }[];
   readonly uptime: ReadonlyMap<string, Uptime>;
+  /** Per component: 30 days of daily uptime and 24 hours of hourly latency (history.ts); a missing one reads as all null. */
+  readonly history: ReadonlyMap<string, ComponentHistory>;
   readonly incidents: readonly IncidentRow[];
   /** Maintenance windows active now or starting within a week. */
   readonly maintenance: readonly MaintenanceWindow[];
@@ -103,6 +108,10 @@ export interface PublicStatus {
     readonly status: Status | "unknown";
     readonly since: string | null;
     readonly uptime: Uptime;
+    /** Exactly 30 UTC days, oldest first, the last one today; uptime null on a day without runs. */
+    readonly history: readonly DayUptime[];
+    /** Exactly 24 hours, oldest first, the last the current hour; null where no latency was recorded. */
+    readonly latency: readonly HourLatency[];
     /** Set while a maintenance window covers the component: its end ("Maintenance until ..."). */
     readonly maintenanceUntil: string | null;
   }[];
@@ -138,15 +147,20 @@ function projection(snapshot: PublicSnapshot, publicOnly: boolean): PublicStatus
     const shown = window.components.filter((id) => ids.has(id));
     return shown.length === 0 ? [] : [{ ...window, components: shown }];
   });
-  const components = listed.map(({ config, state }) => ({
-    id: config.id,
-    name: config.name,
-    // A stale monitor cannot vouch for anything: show unknown rather than a green that may be hours old.
-    status: monitor.stale ? ("unknown" as const) : state.status,
-    since: iso(state.since),
-    uptime: snapshot.uptime.get(config.id) ?? { h24: null, d7: null, d30: null },
-    maintenanceUntil: iso(activeWindow(snapshot.maintenance, config.id, snapshot.now)?.endsAt ?? null),
-  }));
+  const components = listed.map(({ config, state }) => {
+    const { history, latency } = snapshot.history.get(config.id) ?? historySeries(snapshot.now);
+    return {
+      id: config.id,
+      name: config.name,
+      // A stale monitor cannot vouch for anything: show unknown rather than a green that may be hours old.
+      status: monitor.stale ? ("unknown" as const) : state.status,
+      since: iso(state.since),
+      uptime: snapshot.uptime.get(config.id) ?? { h24: null, d7: null, d30: null },
+      history,
+      latency,
+      maintenanceUntil: iso(activeWindow(snapshot.maintenance, config.id, snapshot.now)?.endsAt ?? null),
+    };
+  });
   const known = components.flatMap((component) => (component.status === "unknown" ? [] : [component.status]));
   // Components configured, none of them public. (A refused configuration has no components: that stays "unknown".)
   const none = listed.length === 0 && snapshot.components.length > 0;

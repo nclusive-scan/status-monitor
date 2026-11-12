@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org).
 
+## 0.2.0 - 2026-11-12
+
+### Added
+
+- A redesigned, data-first status page: an overall status card with four headline numbers (30-day uptime, 24-hour
+  average response, components operational, incidents in 30 days), 30 daily uptime bars per component with a legend
+  and per-day tooltips, 24-hour response-time charts with a hover crosshair, and an incident timeline with durations.
+  Light and dark themes follow the system setting, with a toggle kept on the device. Geist and Geist Mono are
+  self-hosted under the SIL Open Font License (`status-page/public/fonts/OFL.txt`); the CSPs allow `font-src 'self'`.
+- `/api/status` and `/api/private` give each component `history` (30 UTC days of daily uptime, today last) and
+  `latency` (24 hours of hourly average and maximum response time, the current hour last), read from the hourly
+  rollups. Schema migration 9 adds the latency columns; hours rolled up before it show no latency.
+
 ## 0.1.1 - 2026-11-12
 
 ### Fixed

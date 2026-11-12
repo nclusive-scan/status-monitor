@@ -24,6 +24,7 @@ export function publicSnapshot(store: MonitorStore, loaded: ConfigResult, now: n
     configError: loaded.ok ? (store.getMeta("config_error") ?? null) : loaded.errors.join("; "),
     components: components.map((config) => ({ config, state: store.component(config.id) })),
     uptime: store.uptime(now),
+    history: store.history(now),
     incidents: store.incidents(now),
     maintenance: loaded.ok ? currentAndUpcoming(loaded.config.maintenance, now) : [],
   };

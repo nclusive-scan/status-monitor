@@ -4,11 +4,13 @@
 //
 // Screen readers: the overall headline is mirrored into a polite live region (#announce) only when it changes. The
 // "Last checked" line is rewritten every refresh, so it sits outside any live region.
-import type { ComponentView, Shown, Summary } from "./model.ts";
+import { latencyChart, uptimeBars } from "./charts.ts";
+import type { ComponentView, IncidentView, Shown, Stats, Summary } from "./model.ts";
 import { asStatus, isPublicStatus, LABEL, siteName, summarize, unavailable } from "./model.ts";
 import { focusAfterSwap, monitorFacts, refreshFailedText, str, warningText } from "./operator.ts";
 
 const KEY_STORAGE = "status-monitor-operator-key";
+const THEME_STORAGE = "status-monitor-theme";
 const REFRESH_MS = 30_000;
 
 const byId = <T extends HTMLElement>(id: string, type: new () => T): T => {
@@ -44,21 +46,50 @@ let lastGood: Summary | null = null;
 let announced = "";
 
 function componentRow(component: ComponentView): HTMLElement {
-  const row = el("tr");
-  const status = el("td");
-  status.append(pill(component.shown, component.label));
-  if (component.note !== null) status.append(el("span", component.note, { class: "note muted" }));
-  row.append(
-    el("th", component.name, { scope: "row" }), status, el("td", percent(component.uptime.h24)), el("td", percent(component.uptime.d7)),
-    el("td", percent(component.uptime.d30)),
-  );
-  return row;
+  const li = el("li", undefined, { class: "component" });
+  const row = el("div", undefined, { class: "component-row" });
+  const name = el("div", undefined, { class: "component-name" });
+  name.append(el("span", component.name), pill(component.shown, component.label));
+  if (component.note !== null) name.append(el("span", component.note, { class: "note muted" }));
+  const uptime = el("div", undefined, { class: "component-uptime" });
+  uptime.append(el("strong", percent(component.uptime.d30)), " uptime · 30 days");
+  row.append(name, uptime);
+  const axis = el("div", undefined, { class: "axis" });
+  axis.append(el("span", "30 days ago"), el("span", `24 hours ${percent(component.uptime.h24)} · 7 days ${percent(component.uptime.d7)}`), el("span", "Today"));
+  li.append(row, uptimeBars(component.name, component.history), axis);
+  return li;
 }
 
-function incidentItem(lines: readonly string[]): HTMLElement {
-  const li = el("li");
-  li.append(el("div", lines[0] ?? "", { class: "title" }), el("div", lines[1] ?? "", { class: "muted" }));
+function latencyCard(component: ComponentView): HTMLElement {
+  const li = el("li", undefined, { class: "latency-card" });
+  const top = el("div", undefined, { class: "latency-top" });
+  const value = el("span", undefined, { class: "latency-value" });
+  value.append(component.latencyNow === null ? "—" : String(Math.round(component.latencyNow)), el("small", component.latencyNow === null ? "" : "ms"));
+  top.append(el("span", component.name, { class: "latency-name" }), value);
+  const foot = el("div", undefined, { class: "latency-foot", "aria-hidden": "true" });
+  foot.append(el("span", "24 h ago"), el("span", "Now"));
+  li.append(top, latencyChart(component.name, component.latency), foot);
   return li;
+}
+
+function incidentItem(incident: IncidentView): HTMLElement {
+  const li = el("li", undefined, { "data-state": incident.state });
+  li.append(el("div", incident.title, { class: "title" }), el("div", `${incident.component} · started ${incident.started} · ${incident.detail}`, { class: "meta" }));
+  return li;
+}
+
+function renderStats(stats: Stats | null): void {
+  const box = byId("stats", HTMLElement);
+  box.hidden = stats === null || stats.total === 0;
+  if (stats === null) return;
+  const set = (id: string, value: string, unit = ""): void => {
+    const target = byId(id, HTMLElement);
+    target.replaceChildren(value, ...(unit === "" ? [] : [el("small", unit)]));
+  };
+  set("stat-uptime", stats.uptime30 === null ? "—" : stats.uptime30.toFixed(stats.uptime30 === 100 ? 0 : 2), stats.uptime30 === null ? "" : "%");
+  set("stat-latency", stats.latency24 === null ? "—" : String(Math.round(stats.latency24)), stats.latency24 === null ? "" : "ms");
+  set("stat-operational", String(stats.operational), `/ ${String(stats.total)}`);
+  set("stat-incidents", String(stats.incidents30));
 }
 
 function render(summary: Summary): void {
@@ -70,33 +101,64 @@ function render(summary: Summary): void {
     byId("announce", HTMLParagraphElement).textContent = summary.headline;
   }
   byId("freshness", HTMLParagraphElement).textContent = summary.freshness;
+  renderStats(summary.stats);
   // The empty state (no public component) is the banner alone: no empty tables or incident lists under it.
   for (const id of ["components-section", "open-section", "history-section"]) byId(id, HTMLElement).hidden = summary.overall === "none";
 
   const rows = summary.components.map(componentRow);
   if (rows.length === 0) {
-    const text = summary.incidents === null ? "Component status is unavailable right now." : "No components are monitored.";
-    rows.push(el("tr"));
-    rows[0]?.append(el("td", text, { colspan: "5", class: "muted" }));
+    rows.push(el("li", summary.incidents === null ? "Component status is unavailable right now." : "No components are monitored.", { class: "muted" }));
   }
-  byId("components", HTMLTableSectionElement).replaceChildren(...rows);
+  byId("components", HTMLUListElement).replaceChildren(...rows);
+  const latency = summary.components.filter((component) => component.latency.length > 0);
+  byId("latency-section", HTMLElement).hidden = latency.length === 0;
+  byId("latency", HTMLUListElement).replaceChildren(...latency.map(latencyCard));
 
   const section = byId("maintenance-section", HTMLElement);
   section.hidden = summary.maintenance.length === 0;
   byId("maintenance", HTMLUListElement).replaceChildren(...summary.maintenance.map((window) => {
     const li = el("li", undefined, { "data-active": String(window.active) });
-    li.append(el("div", window.components, { class: "title" }), el("div", window.when, { class: "muted" }));
+    li.append(el("div", window.components, { class: "title" }), el("div", window.when, { class: "meta" }));
     return li;
   }));
 
   const openList = byId("open-incidents", HTMLUListElement);
   const history = byId("history", HTMLUListElement);
-  if (summary.incidents === null) {
+  if (summary.timeline === null) {
     for (const list of [openList, history]) list.replaceChildren(el("li", "Incident information is unavailable right now.", { class: "muted" }));
     return;
   }
-  replace(openList, summary.incidents.open.map(incidentItem), "No open incidents.");
-  replace(history, summary.incidents.past.map(incidentItem), "No incidents in the past 35 days.");
+  replace(openList, summary.timeline.open.map(incidentItem), "No open incidents.");
+  replace(history, summary.timeline.past.map(incidentItem), "No incidents in the past 35 days.");
+}
+
+// ---- Theme: the OS setting until the viewer picks one; the choice is kept on this device only ----
+
+function storedTheme(): "light" | "dark" | null {
+  try {
+    const value = localStorage.getItem(THEME_STORAGE);
+    return value === "light" || value === "dark" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(theme: "light" | "dark" | null): void {
+  const effective = theme ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  if (theme === null) delete document.documentElement.dataset["theme"];
+  else document.documentElement.dataset["theme"] = theme;
+  byId("theme-toggle", HTMLButtonElement).setAttribute("aria-label", effective === "dark" ? "Switch to light theme" : "Switch to dark theme");
+}
+
+function toggleTheme(): void {
+  const current = storedTheme() ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = current === "dark" ? "light" : "dark";
+  try {
+    localStorage.setItem(THEME_STORAGE, next);
+  } catch {
+    // Storage blocked: the choice lasts for this page view.
+  }
+  applyTheme(next);
 }
 
 /**
@@ -331,6 +393,8 @@ function start(): void {
     void loadPrivate();
   });
   byId("refresh-private", HTMLButtonElement).addEventListener("click", () => void loadPrivate());
+  applyTheme(storedTheme());
+  byId("theme-toggle", HTMLButtonElement).addEventListener("click", toggleTheme);
   void loadPublic();
   setInterval(() => void loadPublic(), REFRESH_MS);
 }

@@ -398,9 +398,10 @@ Cloudflare's network. Probes leave from varying Cloudflare locations, so your fi
 
 - The monitor Worker has no public route. The status page Worker is its only caller and forwards only the five paths
   above, with only the headers each one needs.
-- `/api/status` is sanitized: component names, status, uptime, incident titles and times, and whether an incident is
-  acknowledged. `/api/private` requires the operator key in an `Authorization` header, compared in constant time. The
-  page keeps the key in `sessionStorage` only, never in a URL.
+- `/api/status` is sanitized: component names, status, uptime (with 30 days of daily uptime and 24 hours of hourly
+  latency per component), incident titles and times, and whether an incident is acknowledged. `/api/private` requires
+  the operator key in an `Authorization` header, compared in constant time. The page keeps the key in `sessionStorage`
+  only, never in a URL.
 - Acknowledgement links are HMAC-signed, expire, and name one incident and one contact. Opening a link only shows a
   confirm page, so link scanners cannot acknowledge anything.
 - Inbound SMS is accepted only with a valid `X-Twilio-Signature` for the exact public URL, and only from a number in the

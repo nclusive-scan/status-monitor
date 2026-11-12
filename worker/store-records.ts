@@ -1,6 +1,8 @@
 // The monitor store's records layer (store.ts): the last-known-good platform configuration and its pull status, the
 // report bookkeeping, retention, and the read views behind the status page, the private view and the report.
 import type { EscalationPolicy } from "./config.ts";
+import type { ComponentHistory, DaySums, HourSums } from "./history.ts";
+import { HISTORY_DAYS, historySeries, LATENCY_HOURS } from "./history.ts";
 import { nullableText, num, text } from "./schema.ts";
 import type { Status } from "./types.ts";
 import type {
@@ -281,6 +283,33 @@ export class StoreRecords extends StoreBase {
       return ratio === undefined || Number.isNaN(ratio) ? null : Math.round(ratio * 100_000) / 1000;
     };
     return new Map([...ids].map((id) => [id, { h24: value(h24, id), d7: value(d7, id), d30: value(d30, id) }]));
+  }
+
+  /**
+   * Per component with rollups in the window: 30 UTC days of uptime and 24 hours of latency, ending at `now`
+   * (history.ts). Reads component_hourly only, like uptime().
+   */
+  history(now: number): Map<string, ComponentHistory> {
+    const hour = Math.floor(now / HOUR), firstDay = Math.floor(hour / 24) - (HISTORY_DAYS - 1);
+    const days = new Map<string, Map<number, DaySums>>(), hours = new Map<string, Map<number, HourSums>>();
+    const daily = this.rows(
+      `SELECT component_id, hour / 24 AS day, SUM(up) AS up, SUM(total) AS total FROM component_hourly WHERE hour >= ?
+       GROUP BY component_id, day`, firstDay * 24,
+    );
+    for (const row of daily) {
+      const id = text(row, "component_id");
+      days.set(id, (days.get(id) ?? new Map<number, DaySums>()).set(num(row, "day"), { up: num(row, "up"), total: num(row, "total") }));
+    }
+    const hourly = this.rows(
+      "SELECT component_id, hour, latency_sum, latency_count, latency_max FROM component_hourly WHERE hour > ? AND latency_count > 0",
+      hour - LATENCY_HOURS,
+    );
+    for (const row of hourly) {
+      const id = text(row, "component_id");
+      const sums = { sum: num(row, "latency_sum"), count: num(row, "latency_count"), max: num(row, "latency_max") };
+      hours.set(id, (hours.get(id) ?? new Map<number, HourSums>()).set(num(row, "hour"), sums));
+    }
+    return new Map([...days.keys()].map((id) => [id, historySeries(now, days.get(id), hours.get(id))]));
   }
 
   /** Every open incident (an exhausted one stays visible however many come after it), then the most recently resolved. */

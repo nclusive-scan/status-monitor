@@ -5,7 +5,7 @@ import { formatAlertTime } from "./time.ts";
 
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "content-security-policy":
-    "default-src 'none'; style-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self' data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
