@@ -1,0 +1,43 @@
+# Typecheck, lint, unit tests and a wrangler dry-run bundle of both Workers, on every push to main and every pull
+# request. It deploys nothing and needs no credentials. Actions are pinned to full commit SHAs (Dependabot updates them).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.20.0
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Typecheck, lint and test
+        run: npm run check
+      - name: Bundle the monitor Worker without deploying
+        run: npm run dry-run
+      - name: Build the status page and bundle its Worker without deploying
+        run: npm run dry-run:status-page

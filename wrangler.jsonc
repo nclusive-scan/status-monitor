@@ -1,0 +1,113 @@
+// status-monitor: the isolated monitoring Worker. It has NO public surface: workers_dev and preview URLs are off and
+// there are no routes or custom domains. The status page Worker (status-page/wrangler.jsonc, "status-page") reaches it
+// only through its MONITOR service binding. Deploy: npx wrangler deploy (README.md, "Quick start").
+//
+// This file is an example: replace the example.com hosts, the alert sender and MONITOR_TARGETS with your own.
+//
+// Standalone (the default here): MONITOR_TARGETS below and the ESCALATION_POLICY secret are the whole configuration.
+// Optional platform mode: set PLATFORM_CONFIG_URL and the monitor pulls its policy, targets, senders and maintenance
+// windows from that URL every minute, signed with MONITOR_CONFIG_KEY, and reports back to the same origin
+// (spec/PROTOCOL.md). MONITOR_TARGETS and ESCALATION_POLICY are then only the bootstrap until a first revision arrives.
+//
+// The MonitorObject Durable Object is addressed in jurisdiction "us" (worker/index.ts). Never rename or delete the class
+// or change the jurisdiction after the first deploy: either starts a new, empty object and the old data is lost.
+//
+// Secrets (set with `npx wrangler secret put <NAME>`; never written here):
+//   ESCALATION_POLICY             the escalation policy JSON (config/escalation.example.json); required standalone
+//   ACK_SIGNING_KEY               signs email acknowledgement links, >= 32 bytes
+//   STATUS_VIEW_KEY               operator key for /api/private, >= 32 bytes (absent: the operator view is off)
+//   TWILIO_ACCOUNT_SID            AC...                      (needed when a contact has an sms number)
+//   TWILIO_AUTH_TOKEN             validates X-Twilio-Signature on /hooks/twilio (and sends, unless an API key is set)
+//   TWILIO_AUTH_TOKEN_SECONDARY   optional, accepted for webhook signatures during an auth-token rotation
+//   TWILIO_API_KEY_SID            optional SK... API key for sending, with TWILIO_API_KEY_SECRET
+//   TWILIO_API_KEY_SECRET         optional
+//   TWILIO_FROM                   E.164 sender number, or instead:
+//   TWILIO_MESSAGING_SERVICE_SID  MG... Messaging Service
+//   HEARTBEAT_URL                 external dead-man's switch (for example Healthchecks.io), pinged after every
+//                                 successful run. Optional, but a live Worker without it carries the heartbeat_missing
+//                                 warning: nothing outside Cloudflare would notice the monitor stopping
+//   HEARTBEAT_FAIL_URL            optional Healthchecks-style /fail URL, pinged instead while paging is failing
+//   MONITOR_HEALTH_KEY            signs the deep check (health counts only), >= 32 bytes; needed by a "deep" check
+//   MONITOR_CONFIG_KEY            platform mode only: signs the config pull and the report, >= 32 bytes, different
+//                                 from the health key
+//
+// Optional vars (not set here, so their defaults apply):
+//   BRAND_NAME                    1 to 24 characters, default "Status": "[<brand>]" on every SMS and email subject,
+//                                 "<brand> status" as the pages' title
+//   ALERT_EMAIL_FROM_NAME         email From name, default "<BRAND_NAME> Status"
+//   PLATFORM_CONFIG_URL           https://<host>/api/v2/monitor/config: turns on platform mode (see above)
+//   DEEP_CHECK_HOSTS              comma-separated hosts a deep check may call (default: PLATFORM_CONFIG_URL's host;
+//                                 standalone, a deep check needs this)
+//   DNS_SECONDARY_RESOLVER        a second DoH JSON resolver, e.g. https://dns.google/resolve
+//
+// Email has no secret: it goes through Cloudflare Email Service via the ALERT_EMAIL send_email binding below, which may
+// send only from its allowed sender. ALERT_EMAIL_FROM must name that same address (onboard its domain under Email
+// Service > Email Sending first; sending to arbitrary recipients needs Workers Paid).
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "status-monitor",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "MONITOR_STATE", "class_name": "MonitorObject" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MonitorObject"] }],
+  // Kept identical to ALERT_EMAIL_FROM below (test/config.test.ts checks it).
+  "send_email": [{ "name": "ALERT_EMAIL", "allowed_sender_addresses": ["alerts@example.com"] }],
+  "vars": {
+    "STATUS_PAGE_URL": "https://status.example.com",
+    "TWILIO_WEBHOOK_URL": "https://status.example.com/hooks/twilio",
+    "ALERT_EMAIL_FROM": "alerts@example.com",
+    // "live" calls Twilio and Email Service. Local development sets "log" (README), which records every delivery in
+    // the outbox and the log without contacting either.
+    "DELIVERY_MODE": "live",
+    // Kept identical to config/targets.example.json (test/config.test.ts checks it).
+    "MONITOR_TARGETS": {
+      "version": 1,
+      "openAfterFailures": 2,
+      "resolveAfterPasses": 3,
+      "components": [
+        {
+          "id": "website",
+          "name": "Website",
+          "alert": "page",
+          "public": true
+        },
+        {
+          "id": "api",
+          "name": "API",
+          "alert": "page",
+          "public": true
+        }
+      ],
+      "checks": [
+        {
+          "id": "website_http",
+          "component": "website",
+          "type": "http",
+          "url": "https://example.com/",
+          "expectStatus": 200,
+          "maxRedirects": 2,
+          "latencyDegradedMs": 3000,
+          "timeoutMs": 10000
+        },
+        {
+          "id": "api_health",
+          "component": "api",
+          "type": "http",
+          "url": "https://api.example.com/health",
+          "expectStatus": 200,
+          "maxRedirects": 0,
+          "bodyIncludes": "\"ok\":true",
+          "latencyDegradedMs": 3000,
+          "timeoutMs": 10000
+        }
+      ]
+    }
+  }
+}

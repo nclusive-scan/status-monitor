@@ -1,0 +1,10 @@
+# Installed from this package's own lockfile; build and wrangler output never committed.
+node_modules
+dist/
+.wrangler/
+# Local secrets that wrangler reads (.dev.vars, .dev.vars.<env>, .env, .env.<name>) and the escalation policy the
+# README's quick start writes (it holds real phone numbers and email addresses).
+.dev.vars*
+.env
+.env.*
+escalation.json

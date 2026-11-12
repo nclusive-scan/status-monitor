@@ -1,0 +1,33 @@
+{
+  "name": "status-monitor",
+  "version": "0.1.0",
+  "description": "Serverless uptime monitor and pager on Cloudflare Workers: tiered escalation, SMS-reply acknowledgement, signed deep health checks and a status page.",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nclusive-scan/status-monitor.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=24.20.0 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p status-page/tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "node --test 'test/**/*.test.ts'",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "build:status-page": "node scripts/build-status-page.ts",
+    "dry-run": "wrangler deploy --dry-run --outdir dist/worker",
+    "dry-run:status-page": "npm run build:status-page && wrangler deploy --dry-run --config status-page/wrangler.jsonc --outdir \"$PWD/dist/status-page\""
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261027.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.13.0",
+    "jiti": "2.7.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "wrangler": "4.154.0"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "openAfterFailures": 2,
+  "resolveAfterPasses": 3,
+  "components": [
+    {
+      "id": "website",
+      "name": "Website",
+      "alert": "page",
+      "public": true
+    },
+    {
+      "id": "api",
+      "name": "API",
+      "alert": "page",
+      "public": true
+    }
+  ],
+  "checks": [
+    {
+      "id": "website_http",
+      "component": "website",
+      "type": "http",
+      "url": "https://example.com/",
+      "expectStatus": 200,
+      "maxRedirects": 2,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "api_health",
+      "component": "api",
+      "type": "http",
+      "url": "https://api.example.com/health",
+      "expectStatus": 200,
+      "maxRedirects": 0,
+      "bodyIncludes": "\"ok\":true",
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schema": 1,
+  "revision": 7,
+  "updatedAt": "2026-11-11T20:00:00.000Z",
+  "updatedBy": "Display Name",
+  "policy": {
+    "version": 1,
+    "maxCycles": 3,
+    "ackLinkTtlMinutes": 1440,
+    "timeZone": "America/New_York",
+    "reminderMinutes": 60,
+    "drill": {
+      "enabled": false,
+      "weekday": 3,
+      "time": "10:00"
+    },
+    "tiers": [
+      {
+        "id": "primary",
+        "name": "Primary on-call",
+        "ackTimeoutMinutes": 5,
+        "contacts": [
+          {
+            "id": "primary_oncall",
+            "name": "Primary On-call",
+            "sms": "+15555550100",
+            "email": "primary@example.com"
+          }
+        ]
+      },
+      {
+        "id": "secondary",
+        "name": "Secondary on-call",
+        "ackTimeoutMinutes": 10,
+        "contacts": [
+          {
+            "id": "secondary_oncall",
+            "name": "Secondary On-call",
+            "sms": "+15555550101",
+            "email": "secondary@example.com"
+          },
+          {
+            "id": "engineering_lead",
+            "name": "Engineering Lead",
+            "email": "lead@example.com"
+          }
+        ]
+      },
+      {
+        "id": "third_party",
+        "name": "Third party support",
+        "ackTimeoutMinutes": 15,
+        "contacts": [
+          {
+            "id": "vendor_support",
+            "name": "Vendor Support",
+            "sms": "+15555550102",
+            "email": "support@example.com"
+          }
+        ]
+      }
+    ]
+  },
+  "targets": null,
+  "senders": {
+    "smsFrom": "+15555550123",
+    "smsMessagingServiceSid": null,
+    "emailFrom": "alerts@example.com",
+    "emailFromName": "Example Status"
+  },
+  "maintenance": []
+}
