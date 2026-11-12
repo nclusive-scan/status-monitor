@@ -41,3 +41,16 @@ jobs:
         run: npm run dry-run
       - name: Build the status page and bundle its Worker without deploying
         run: npm run dry-run:status-page
+      - name: Start the monitor in the local Workers runtime and read its status
+        # A dry run only bundles; this starts the Worker, which catches what the runtime itself refuses.
+        run: |
+          node_modules/.bin/wrangler dev --port 8799 --inspector-port 9339 --var DELIVERY_MODE:log --var LOCAL_DEV:true > wrangler-dev.log 2>&1 &
+          dev=$!
+          code=000
+          for _ in $(seq 1 60); do
+            code=$(curl -s -o status.json -w '%{http_code}' http://127.0.0.1:8799/api/status || true)
+            [ "$code" != 000 ] && break
+            sleep 1
+          done
+          kill "$dev"; wait "$dev" 2>/dev/null || true
+          if [ "$code" != 200 ] || grep -q 'Uncaught' wrangler-dev.log; then cat wrangler-dev.log; echo "status $code" >&2; exit 1; fi
