@@ -11,6 +11,7 @@ import type { ApplyResult } from "../worker/platform-config.ts";
 import type { SqlRow } from "../worker/schema.ts";
 import type { CheckResult } from "../worker/types.ts";
 import { isRecord } from "../worker/types.ts";
+import { localDev, monitorId as addressMonitor } from "../worker/monitor-id.ts";
 import { fixtureTargets, MINUTE, sqliteStorage, T0 } from "./support/fakes.ts";
 
 registerHooks({
@@ -39,7 +40,8 @@ if (!isObjectClass(MonitorObject)) throw new Error("MonitorObject not exported")
 const alarmTime: unknown = isRecord(loaded) ? loaded["alarmTime"] : null;
 const isAlarmTime = (value: unknown): value is (next: number | null, now: number) => number | null => typeof value === "function";
 const entry: unknown = await import(new URL("../worker/index.ts", import.meta.url).href);
-const monitorId: unknown = isRecord(entry) ? entry["monitorId"] : null;
+const addressing: unknown = await import(new URL("../worker/monitor-id.ts", import.meta.url).href);
+const monitorId: unknown = isRecord(addressing) ? addressing["monitorId"] : null;
 const isMonitorId = (value: unknown): value is (namespace: { jurisdiction(name: string): { idFromName(name: string): unknown } }) => unknown =>
   typeof value === "function";
 
@@ -185,8 +187,29 @@ void test("the monitor object is always addressed in jurisdiction us, by name", 
   } });
   assert.equal(id, "id");
   assert.deepEqual(seen, ["jurisdiction:us", "name:monitor"]);
-  const source = read("worker/index.ts");
-  assert.equal(source.match(/idFromName\(/g)?.length, 1, "no other way to address the object");
+  assert.equal(read("worker/monitor-id.ts").match(/\.idFromName\(/g)?.length, 1, "one way to address the object");
+  assert.doesNotMatch(read("worker/index.ts"), /idFromName\(/, "the entry module goes through monitorId");
+});
+
+void test("only local development (LOCAL_DEV with DELIVERY_MODE log) addresses the object without a jurisdiction", () => {
+  assert.equal(localDev({ LOCAL_DEV: "true", DELIVERY_MODE: "log" }), true);
+  assert.equal(localDev({ LOCAL_DEV: "true", DELIVERY_MODE: "live" }), false, "a live deployment always uses the jurisdiction");
+  assert.equal(localDev({ LOCAL_DEV: "true" }), false, "DELIVERY_MODE defaults to live");
+  assert.equal(localDev({ LOCAL_DEV: "1", DELIVERY_MODE: "log" }), false);
+  const seen: string[] = [];
+  const namespace = {
+    jurisdiction: (name: string) => { seen.push(`jurisdiction:${name}`); return namespace; },
+    idFromName: (objectName: string) => { seen.push(`name:${objectName}`); return "id"; },
+  };
+  assert.equal(addressMonitor(namespace, true), "id");
+  assert.deepEqual(seen, ["name:monitor"]);
+});
+
+void test("the entry module exports only the handler and the Durable Object class, or the runtime refuses to start", () => {
+  // workerd treats every named export of the entry module as an entrypoint; a string export fails at startup
+  // ("Incorrect type for map entry"), which a bundling dry run does not notice.
+  assert.ok(isRecord(entry));
+  assert.deepEqual(Object.keys(entry).sort(), ["MonitorObject", "default"]);
 });
 
 void test("ingest starts this week's drill at its slot; the private view lists it with warnings and contact health", async (t) => {

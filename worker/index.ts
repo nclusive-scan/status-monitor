@@ -18,24 +18,18 @@ import type { Env } from "./env.ts";
 import { envRecord } from "./env.ts";
 import { heartbeatTarget, ping } from "./heartbeat.ts";
 import type { MonitorObject } from "./monitor-object.ts";
+import { localDev, monitorId } from "./monitor-id.ts";
 import { fetchPlatformConfig, platformFetchSettings, resolveConfig } from "./platform-config.ts";
 import { reportUrl, sendReport } from "./report.ts";
 import { ackConfirmPage, ackResultPage, escalateResultPage, invalidAckPage, json, jsonText, notFound, twiml } from "./responses.ts";
 import { validateTwilioSignatureAny } from "./twilio-signature.ts";
 import { systemClock } from "./types.ts";
 
+// The entry module exports only the handler (default) and the Durable Object class: the runtime refuses any other.
 export { MonitorObject } from "./monitor-object.ts";
 
 const MAX_FORM_BYTES = 64 * 1024;
-export const MONITOR_JURISDICTION = "us";
-export const MONITOR_OBJECT_NAME = "monitor";
-
-/** The one monitor object, always addressed through the "us" jurisdiction. */
-export function monitorId(namespace: Pick<DurableObjectNamespace, "jurisdiction">): DurableObjectId {
-  return namespace.jurisdiction(MONITOR_JURISDICTION).idFromName(MONITOR_OBJECT_NAME);
-}
-
-const monitor = (env: Env): DurableObjectStub<MonitorObject> => env.MONITOR_STATE.get(monitorId(env.MONITOR_STATE));
+const monitor = (env: Env): DurableObjectStub<MonitorObject> => env.MONITOR_STATE.get(monitorId(env.MONITOR_STATE, localDev(env)));
 
 /**
  * Pulls the platform-managed configuration and hands it to the object. Never throws, and runs beside the checks: it

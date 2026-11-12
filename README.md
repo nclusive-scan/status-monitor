@@ -194,6 +194,7 @@ page shows the monitor as delayed, and your outside heartbeat alarms.
 | `ALERT_EMAIL_FROM_NAME` | no | `<BRAND_NAME> Status` (`Status` for the default brand) | The email From name: 1 to 60 printable characters, no quotes or angle brackets |
 | `BRAND_NAME` | no | `Status` | Shown as `[<BRAND_NAME>]` at the start of every SMS and email subject, as "Sent by the `<BRAND_NAME>` status monitor." in email footers, and as "`<BRAND_NAME>` status" in page titles. 1 to 24 characters: letters, digits, single spaces and `. , & ' ( ) + _ -`. The limit keeps every SMS within two GSM-7 segments; any other value refuses the configuration |
 | `DELIVERY_MODE` | no | `live` | `live` calls Twilio and Email Service. `log` records every delivery without sending anything (local development) |
+| `LOCAL_DEV` | no | unset | `true` only under `wrangler dev`, with `DELIVERY_MODE=log`: addresses the monitor object without a jurisdiction, which the local runtime lacks. Ignored when `DELIVERY_MODE` is `live` |
 | `PLATFORM_CONFIG_URL` | no | unset (standalone) | `https://<host>/api/v2/monitor/config`. Turns on [platform integration](#platform-integration-optional) |
 | `DEEP_CHECK_HOSTS` | for a deep check in standalone mode | the host of `PLATFORM_CONFIG_URL` | Comma-separated `host` or `host:port` values that a deep check may call (case-insensitive, `:443` ignored; a stray comma makes the whole value unusable) |
 | `DNS_SECONDARY_RESOLVER` | no | none | A second DNS-over-HTTPS JSON resolver (for example `https://dns.google/resolve`), asked when Cloudflare's fails |
@@ -314,15 +315,21 @@ report and refusal behaviour) is specified in [spec/PROTOCOL.md](spec/PROTOCOL.m
 Run with deliveries logged, never sent:
 
 ```sh
-npx wrangler dev --test-scheduled --var DELIVERY_MODE:log
-curl "http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*"     # runs one cron tick
+npx wrangler dev --port 8788 --test-scheduled --var DELIVERY_MODE:log --var LOCAL_DEV:true
+curl "http://127.0.0.1:8788/__scheduled?cron=*+*+*+*+*"     # runs one cron tick
 ```
+
+`LOCAL_DEV=true` is needed because the local runtime does not implement Durable Object jurisdictions: it addresses the
+monitor object without the `us` jurisdiction. It only works together with `DELIVERY_MODE=log`, so a live deployment
+always uses the jurisdiction.
 
 You can instead put `DELIVERY_MODE=log` in a git-ignored `.dev.vars` file. Use test values only, never real
 credentials. **Without `DELIVERY_MODE=log`, an incident calls the real Twilio API** with whatever credentials
 `.dev.vars` holds. In `log` mode every delivery is recorded in the outbox and the log, with the recipient masked, and
 shown as "logged, not sent" in the operator view. To try the page against the local monitor, run
-`npm run build:status-page`, then `npx wrangler dev -c status-page/wrangler.jsonc -c wrangler.jsonc`.
+`npm run build:status-page`, then, in a second terminal, `npx wrangler dev -c status-page/wrangler.jsonc --port 8787`
+(it finds the running monitor through Wrangler's local registry) and open http://127.0.0.1:8787. For a local copy of
+the page config, drop its `routes`.
 
 ### Email prerequisites
 

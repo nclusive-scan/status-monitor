@@ -42,6 +42,8 @@ export interface Env {
   readonly PLATFORM_CONFIG_URL?: string;
   /** "live" (default) or "log": log records deliveries without contacting Twilio or sending email. */
   readonly DELIVERY_MODE?: string;
+  /** "true" only under `wrangler dev`, with DELIVERY_MODE "log": skips the jurisdiction the local runtime lacks (monitor-id.ts). */
+  readonly LOCAL_DEV?: string;
   /** Cloudflare Email Service send_email binding, restricted to the alert sender address (ALERT_EMAIL_FROM). */
   readonly ALERT_EMAIL?: SendEmail;
 }
