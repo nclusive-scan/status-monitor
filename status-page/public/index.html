@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Live service status.">
+<title>Status</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%231a7f4b'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to status</a>
+<header class="masthead">
+  <div class="page">
+    <p class="brand" id="brand">Status</p>
+    <nav aria-label="Views">
+      <button type="button" class="link" id="show-public" aria-pressed="true">Status</button>
+      <button type="button" class="link" id="show-private" aria-pressed="false">Operator view</button>
+    </nav>
+  </div>
+</header>
+<main id="main" class="page" tabindex="-1">
+  <section id="public-view" aria-labelledby="overall-heading">
+    <div id="overall" class="banner" data-status="unknown">
+      <h1 id="overall-heading">Checking status…</h1>
+      <p id="freshness" class="muted"></p>
+    </div>
+    <!-- Announces the overall status only when it changes (app.ts); the freshness line above is not live. -->
+    <p id="announce" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
+
+    <section id="components-section" aria-labelledby="components-heading">
+      <h2 id="components-heading">Components</h2>
+      <table class="components">
+        <caption class="visually-hidden">Current status and uptime of each component</caption>
+        <thead>
+          <tr><th scope="col">Component</th><th scope="col">Status</th><th scope="col">24 hours</th><th scope="col">7 days</th><th scope="col">30 days</th></tr>
+        </thead>
+        <tbody id="components"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section id="maintenance-section" aria-labelledby="maintenance-heading" hidden>
+      <h2 id="maintenance-heading">Scheduled maintenance</h2>
+      <ul id="maintenance" class="incidents"></ul>
+    </section>
+
+    <section id="open-section" aria-labelledby="open-heading">
+      <h2 id="open-heading">Open incidents</h2>
+      <ul id="open-incidents" class="incidents"><li class="muted">Loading…</li></ul>
+    </section>
+
+    <section id="history-section" aria-labelledby="history-heading">
+      <h2 id="history-heading">Past 35 days</h2>
+      <ul id="history" class="incidents"><li class="muted">Loading…</li></ul>
+    </section>
+  </section>
+
+  <section id="private-view" aria-labelledby="private-heading" hidden>
+    <h1 id="private-heading">Operator view</h1>
+    <form id="key-form" class="key-form" autocomplete="off">
+      <label for="view-key">Operator key</label>
+      <input id="view-key" name="view-key" type="password" autocomplete="off" spellcheck="false" required minlength="32">
+      <p class="muted">Kept in this tab only (session storage) and sent as an Authorization header. Never put it in a URL.</p>
+      <div class="actions">
+        <button type="submit" class="button">Open operator view</button>
+      </div>
+      <p id="key-error" class="error" role="alert"></p>
+    </form>
+    <div id="private-content" hidden>
+      <div class="actions">
+        <button type="button" class="button" id="refresh-private">Refresh</button>
+        <button type="button" class="link" id="forget-key">Forget key</button>
+      </div>
+      <p id="private-error" class="error" role="alert"></p>
+      <h2 id="private-monitor-heading" tabindex="-1">Monitor</h2>
+      <dl id="private-monitor" class="facts"></dl>
+      <h2>Warnings</h2>
+      <ul id="private-warnings" class="incidents"></ul>
+      <h2>Checks</h2>
+      <div class="scroll"><table class="checks">
+        <caption class="visually-hidden">Last result of every check</caption>
+        <thead><tr><th scope="col">Check</th><th scope="col">Component</th><th scope="col">Status</th><th scope="col">Detail</th><th scope="col">Latency</th><th scope="col">Observed</th></tr></thead>
+        <tbody id="private-checks"></tbody>
+      </table></div>
+      <h2>Contact health</h2>
+      <div class="scroll"><table class="contacts">
+        <caption class="visually-hidden">Contact channels that are not working</caption>
+        <thead><tr><th scope="col">Contact</th><th scope="col">Channel</th><th scope="col">State</th><th scope="col">Code</th><th scope="col">Since</th></tr></thead>
+        <tbody id="private-contacts"></tbody>
+      </table></div>
+      <h2>Escalation</h2>
+      <ul id="private-escalation" class="incidents"></ul>
+      <h2>Maintenance windows</h2>
+      <ul id="private-maintenance" class="incidents"></ul>
+      <h2>Drills</h2>
+      <ul id="private-drills" class="incidents"></ul>
+      <h2>Notification log</h2>
+      <div class="scroll"><table class="log">
+        <caption class="visually-hidden">Most recent notifications, contacts masked</caption>
+        <thead><tr><th scope="col">Created</th><th scope="col">Kind</th><th scope="col">Contact</th><th scope="col">Channel</th><th scope="col">State</th><th scope="col">Delivery</th></tr></thead>
+        <tbody id="private-log"></tbody>
+      </table></div>
+      <h2>Deep check payload</h2>
+      <pre id="private-deep" class="payload"></pre>
+    </div>
+  </section>
+</main>
+<footer class="page muted footer">Checked every minute from Cloudflare. Times are in your local time zone.</footer>
+</body>
+</html>

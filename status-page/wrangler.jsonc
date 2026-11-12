@@ -1,0 +1,31 @@
+// status-page: the public status page, a Worker with Workers Static Assets. Static files come from dist/ (built by
+// `npm run build:status-page` from public/ and src/); the Worker (worker/index.ts) runs first for /api/*, /ack/* and
+// /hooks/* and forwards them to the monitor Worker over the MONITOR service binding. It holds no secrets: the monitor
+// checks every key and signature.
+//
+// Meant to be reachable only on its custom domain: no workers.dev URL and no preview URLs, so there is no second
+// hostname to probe. Until you add the route below, a deploy has no address at all. The custom domain makes Cloudflare
+// create the DNS record and certificate on the first deploy; the hostname must be in a zone on the same account.
+// Deploy from the repository root, after the monitor: npx wrangler deploy --config status-page/wrangler.jsonc.
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "status-page",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": false,
+  "preview_urls": false,
+  // Your status page hostname, which must match STATUS_PAGE_URL in ../wrangler.jsonc. Example:
+  // "routes": [{ "pattern": "status.example.com", "custom_domain": true }],
+  "routes": [],
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist",
+    // Static files are answered by the assets layer without running the Worker; these paths always run it first.
+    "run_worker_first": ["/api/*", "/ack/*", "/hooks/*"],
+    // A path that matches no file (and none of the above) reaches the Worker, which answers a JSON 404.
+    "not_found_handling": "none",
+    "html_handling": "auto-trailing-slash"
+  },
+  // Must name the monitor Worker's "name" in ../wrangler.jsonc.
+  "services": [{ "binding": "MONITOR", "service": "status-monitor" }]
+}

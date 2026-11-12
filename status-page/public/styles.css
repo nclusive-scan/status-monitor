@@ -1,0 +1,132 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1c1c1a;
+  --muted: #5d5d58;
+  --border: #dcdcd6;
+  --focus: #1f5fbf;
+  --ok: #17703f;
+  --ok-bg: #e5f4ea;
+  --degraded: #8a5a00;
+  --degraded-bg: #fbf0d9;
+  --down: #b3261e;
+  --down-bg: #fbe5e3;
+  --unknown: #555550;
+  --unknown-bg: #ececea;
+  --maintenance: #1d4f9c;
+  --maintenance-bg: #e4ecf8;
+  --radius: 10px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131312;
+    --surface: #1c1c1b;
+    --text: #ededea;
+    --muted: #a8a8a2;
+    --border: #34342f;
+    --focus: #8ab4ff;
+    --ok: #6fd69a;
+    --ok-bg: #12301f;
+    --degraded: #f0c060;
+    --degraded-bg: #33280f;
+    --down: #ff8f86;
+    --down-bg: #3a1715;
+    --unknown: #b9b9b3;
+    --unknown-bg: #2a2a28;
+    --maintenance: #9cbcf5;
+    --maintenance-bg: #172338;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+a { color: var(--focus); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+/* main takes focus when the view switches (tabindex="-1"); it is not a control, so it draws no ring. */
+[tabindex="-1"]:focus { outline: none; }
+.page { max-width: 64rem; margin: 0 auto; padding: 0 1rem; }
+.narrow { max-width: 36rem; padding-top: 2rem; }
+.skip { position: absolute; left: -999px; top: 0; background: var(--surface); padding: .5rem 1rem; }
+.skip:focus { left: 1rem; z-index: 1; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.muted { color: var(--muted); }
+.error { color: var(--down); min-height: 1.5em; }
+/* Holds a failed-refresh note above the operator data; takes no room while empty (it stays rendered, so it is announced). */
+#private-error:empty { min-height: 0; margin: 0; }
+.eyebrow { font-size: .875rem; }
+
+.masthead { border-bottom: 1px solid var(--border); background: var(--surface); }
+.masthead .page { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 3.5rem; flex-wrap: wrap; }
+.brand { font-weight: 700; margin: 0; }
+.brand span { font-weight: 400; color: var(--muted); }
+nav { display: flex; gap: .25rem; }
+
+.button, .link { font: inherit; cursor: pointer; border-radius: 8px; padding: .5rem .9rem; min-height: 44px; }
+.button { background: var(--text); color: var(--bg); border: 1px solid var(--text); }
+/* The lesser action beside a primary one (the ack page's "Escalate to the next tier" beside "Acknowledge"). */
+.button.secondary { background: transparent; color: var(--text); border-color: var(--text); }
+.link { background: transparent; color: var(--text); border: 1px solid transparent; }
+/* The selected view: a --muted edge (3:1 against the masthead, WCAG 1.4.11) and heavier text, not a faint tint. */
+.link[aria-pressed="true"] { border-color: var(--muted); background: var(--bg); font-weight: 600; }
+
+h1 { font-size: 1.5rem; margin: 0; }
+h2 { font-size: 1.125rem; margin: 2rem 0 .75rem; }
+
+.banner { margin-top: 1.5rem; border-radius: var(--radius); padding: 1.25rem 1.25rem; border: 1px solid var(--border); background: var(--surface); }
+.banner p { margin: .25rem 0 0; }
+[data-status="ok"].banner { background: var(--ok-bg); }
+[data-status="degraded"].banner { background: var(--degraded-bg); }
+[data-status="down"].banner { background: var(--down-bg); }
+[data-status="unknown"].banner { background: var(--unknown-bg); }
+[data-status="maintenance"].banner { background: var(--maintenance-bg); }
+
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: .8125rem; font-weight: 600; color: var(--muted); }
+tbody tr:last-child td { border-bottom: 0; }
+.scroll { overflow-x: auto; }
+
+.pill { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; }
+.pill::before { content: ""; box-sizing: border-box; flex: none; width: .7rem; height: .7rem; border-radius: 50%; background: currentColor; }
+.pill[data-status="ok"] { color: var(--ok); }
+.pill[data-status="degraded"] { color: var(--degraded); }
+.pill[data-status="degraded"]::before { border-radius: 2px; }
+.pill[data-status="down"] { color: var(--down); }
+.pill[data-status="down"]::before { border-radius: 0; transform: rotate(45deg); }
+.pill[data-status="unknown"] { color: var(--unknown); }
+.pill[data-status="unknown"]::before { background: transparent; border: 2px dashed currentColor; }
+.pill[data-status="maintenance"] { color: var(--maintenance); }
+.pill[data-status="maintenance"]::before { background: transparent; border: 3px solid currentColor; }
+.note { display: block; font-size: .8125rem; }
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8125rem; overflow-wrap: anywhere; }
+#maintenance li[data-active="true"] { border-color: var(--maintenance); }
+
+.incidents { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.incidents li { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem 1rem; }
+.incidents .title { font-weight: 600; }
+
+.key-form { display: grid; gap: .5rem; max-width: 32rem; margin-top: 1rem; }
+/* --muted, not --border: a control's edge needs 3:1 against what surrounds it (WCAG 1.4.11). */
+.key-form input { font: inherit; padding: .6rem .75rem; border-radius: 8px; border: 1px solid var(--muted); background: var(--surface); color: var(--text); }
+.actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+/* minmax(0, 1fr) and overflow-wrap: a long token (a validator path, an address) wraps instead of widening the page. */
+.facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .25rem 1rem; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.payload { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; overflow-x: auto; font-size: .8125rem; }
+.footer { padding-top: 2rem; padding-bottom: 2rem; font-size: .875rem; }
+
+@media (max-width: 40rem) {
+  .components th:nth-child(4), .components td:nth-child(4), .components th:nth-child(5), .components td:nth-child(5) { display: none; }
+  .facts { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .facts dd { margin-bottom: .5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

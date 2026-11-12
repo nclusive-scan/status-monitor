@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "openAfterFailures": 2,
+  "resolveAfterPasses": 3,
+  "components": [
+    {
+      "id": "signup",
+      "name": "Signup"
+    },
+    {
+      "id": "newsletters",
+      "name": "Newsletters"
+    },
+    {
+      "id": "scheduling",
+      "name": "Scheduling"
+    },
+    {
+      "id": "checkout",
+      "name": "Checkout"
+    },
+    {
+      "id": "upload",
+      "name": "Upload"
+    },
+    {
+      "id": "forums",
+      "name": "Forums"
+    },
+    {
+      "id": "platform_api",
+      "name": "Platform API"
+    },
+    {
+      "id": "notifications",
+      "name": "Notifications",
+      "pageOn": "down"
+    }
+  ],
+  "checks": [
+    {
+      "id": "signup_http",
+      "component": "signup",
+      "type": "http",
+      "url": "https://signup.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "signup_dns",
+      "component": "signup",
+      "type": "dns",
+      "hostname": "signup.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "newsletters_http",
+      "component": "newsletters",
+      "type": "http",
+      "url": "https://newsletters.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "newsletters_dns",
+      "component": "newsletters",
+      "type": "dns",
+      "hostname": "newsletters.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "scheduling_http",
+      "component": "scheduling",
+      "type": "http",
+      "url": "https://scheduling.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "scheduling_dns",
+      "component": "scheduling",
+      "type": "dns",
+      "hostname": "scheduling.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "checkout_http",
+      "component": "checkout",
+      "type": "http",
+      "url": "https://checkout.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "checkout_dns",
+      "component": "checkout",
+      "type": "dns",
+      "hostname": "checkout.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "upload_http",
+      "component": "upload",
+      "type": "http",
+      "url": "https://upload.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "upload_dns",
+      "component": "upload",
+      "type": "dns",
+      "hostname": "upload.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "forums_http",
+      "component": "forums",
+      "type": "http",
+      "url": "https://forums.example.test/",
+      "expectStatus": 200,
+      "maxRedirects": 5,
+      "latencyDegradedMs": 3000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "forums_dns",
+      "component": "forums",
+      "type": "dns",
+      "hostname": "forums.example.test",
+      "dnsOnly": true,
+      "timeoutMs": 5000
+    },
+    {
+      "id": "platform_health",
+      "component": "platform_api",
+      "type": "http",
+      "url": "https://platform.example.com/api/v2/health",
+      "expectStatus": 200,
+      "maxRedirects": 0,
+      "bodyIncludes": "\"ok\":true",
+      "latencyDegradedMs": 2000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "forums_health",
+      "component": "forums",
+      "type": "http",
+      "url": "https://forums.example.test/api/health",
+      "expectStatus": 200,
+      "maxRedirects": 0,
+      "bodyIncludes": "\"status\":\"ok\"",
+      "latencyDegradedMs": 2000,
+      "timeoutMs": 10000
+    },
+    {
+      "id": "platform_deep",
+      "component": "platform_api",
+      "type": "deep",
+      "url": "https://platform.example.com/api/v2/monitor/health",
+      "latencyDegradedMs": 5000,
+      "timeoutMs": 10000,
+      "componentMap": {
+        "notification_backlog": "notifications",
+        "notification_backlog_age": "notifications",
+        "notification_failures_1h": "notifications"
+      }
+    }
+  ]
+}

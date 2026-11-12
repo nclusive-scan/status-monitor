@@ -1,0 +1,297 @@
+{
+  "description": "Status monitor signed requests, version 2. Each signature vector gives the inputs, the exact canonical string (lines joined with LF, no trailing LF) and the X-Status-Monitor-Signature value. Each verification vector is a request a server holding `server` must accept or refuse; health is checked with the health key, config and report with the config key. Keys and hosts are for tests only.",
+  "algorithm": "HMAC-SHA256 over UTF-8 canonical string; body line is lowercase hex SHA-256 of the exact body bytes",
+  "emptyBodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "server": {
+    "healthKey": "health-key-for-test-vectors-only-0123456789",
+    "configKey": "config-key-for-test-vectors-only-0123456789",
+    "hosts": [
+      "marketplace.example.com",
+      "status.example.com:8443"
+    ],
+    "nowSeconds": 1762862400,
+    "maxSkewSeconds": 60,
+    "keyPurposeByPath": {
+      "/api/v2/monitor/health": "health",
+      "/api/v2/monitor/config": "config",
+      "/api/v2/monitor/report": "config"
+    }
+  },
+  "signatures": [
+    {
+      "name": "GET health with the health key",
+      "keyPurpose": "health",
+      "key": "health-key-for-test-vectors-only-0123456789",
+      "method": "GET",
+      "authority": "marketplace.example.com",
+      "path": "/api/v2/monitor/health",
+      "timestamp": "1762862400",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v2\nGET\nmarketplace.example.com\n/api/v2/monitor/health\n1762862400\n0123456789abcdef0123456789abcdef\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "v2=43b4aa598dd805a4dd03878ea283bd8ad8d2d8ad88a0704d8ba218f7ae34c668"
+    },
+    {
+      "name": "GET config with the config key",
+      "keyPurpose": "config",
+      "key": "config-key-for-test-vectors-only-0123456789",
+      "method": "GET",
+      "authority": "marketplace.example.com",
+      "path": "/api/v2/monitor/config",
+      "timestamp": "1762862400",
+      "nonce": "fedcba9876543210fedcba9876543210",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v2\nGET\nmarketplace.example.com\n/api/v2/monitor/config\n1762862400\nfedcba9876543210fedcba9876543210\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "v2=38b6b7ea051d053a90cc28358ba8d761ba738e459da93942129acdfa351772bf"
+    },
+    {
+      "name": "POST report with a JSON body",
+      "keyPurpose": "config",
+      "key": "config-key-for-test-vectors-only-0123456789",
+      "method": "POST",
+      "authority": "marketplace.example.com",
+      "path": "/api/v2/monitor/report",
+      "timestamp": "1762862400",
+      "nonce": "00112233445566778899aabbccddeeff",
+      "body": "{\"schema\":1,\"sentAt\":\"2026-11-11T12:00:00.000Z\"}",
+      "bodySha256": "c4c133cf52cb5ff684b82c0c35b8e226210c763e592d46df6c54c17eb7bdb148",
+      "canonical": "v2\nPOST\nmarketplace.example.com\n/api/v2/monitor/report\n1762862400\n00112233445566778899aabbccddeeff\nc4c133cf52cb5ff684b82c0c35b8e226210c763e592d46df6c54c17eb7bdb148",
+      "signature": "v2=bfb0de34eb4e34e8d8c7a8297e1015bfac75a3b1f1af2b6e35f5f20541f8ffa7"
+    },
+    {
+      "name": "POST report whose body has a non-ASCII character (hashed as UTF-8 bytes)",
+      "keyPurpose": "config",
+      "key": "config-key-for-test-vectors-only-0123456789",
+      "method": "POST",
+      "authority": "marketplace.example.com",
+      "path": "/api/v2/monitor/report",
+      "timestamp": "1762862400",
+      "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "body": "{\"note\":\"caf\u00e9\"}",
+      "bodySha256": "a84c174531ab46d58aaeb9c85aed22981d418f25bead412cd282e97f427a0ba1",
+      "canonical": "v2\nPOST\nmarketplace.example.com\n/api/v2/monitor/report\n1762862400\naaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\na84c174531ab46d58aaeb9c85aed22981d418f25bead412cd282e97f427a0ba1",
+      "signature": "v2=2d171f6e25ea77948aa24d2b8253d5484c2d3f55f364ee108a8274cec22a96a1"
+    },
+    {
+      "name": "GET config at a non-default port",
+      "keyPurpose": "config",
+      "key": "config-key-for-test-vectors-only-0123456789",
+      "method": "GET",
+      "authority": "status.example.com:8443",
+      "path": "/api/v2/monitor/config",
+      "timestamp": "1762862400",
+      "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "v2\nGET\nstatus.example.com:8443\n/api/v2/monitor/config\n1762862400\n0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "v2=5e003c3c548cdece97b5a9bf60f0b9089dbf97863c892e4c0937a8e1bd6d94d5"
+    }
+  ],
+  "verifications": [
+    {
+      "name": "accepted: GET health signed for an allowed host with the health key",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/health",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=1953aefcfa4b2af3014ecbfd90dd9b8b001e287cce5ba9b49bca9a28906729bf"
+        },
+        "body": ""
+      },
+      "accept": true
+    },
+    {
+      "name": "accepted: POST report signed with the config key",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/monitor/report",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862340",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=24ce6aba4a938357c1086ebc53013c8bb213575df22786853f389284a42e89b7"
+        },
+        "body": "{\"schema\":1,\"sentAt\":\"2026-11-11T12:00:00.000Z\"}"
+      },
+      "accept": true
+    },
+    {
+      "name": "accepted: GET config signed for the allowed host and port",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/config",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862460",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=bd5573461439bcaca89619ba974ace66d9aea89ada70c068fef2a5bdf61e9ea3"
+        },
+        "body": ""
+      },
+      "accept": true
+    },
+    {
+      "name": "refused: signed for a host that is not allowed",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/config",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=92439b4039d4206f0f22152eca23a8d1d3e356f527ee4aa329260489b7347db6"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: the allowed host's port was left out of the signed authority",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/config",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=0f2a41eb6d71347d6e00d8862de691759fdb63540d0d554ef9adf9de193787a5"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: the body was changed after signing",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/monitor/report",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=3f35412b6b53f609ded46c43a6ed50eeddc7b61d3441f8c34bffc116cbbedaa7"
+        },
+        "body": "{\"schema\":1,\"sentAt\":\"2026-11-11T12:01:00.000Z\"}"
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: the config path signed with the health key",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/config",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=47335332de106aae5b7c1174a1f19ddbe2767ce6889d7323bb72f570dbae6381"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: the report signed with the health key",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/monitor/report",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=50caaedf22d3a30cd495173b7c176141785cf5d7f709c2ab3a5c0eb32cb717ec"
+        },
+        "body": "{\"schema\":1,\"sentAt\":\"2026-11-11T12:00:00.000Z\"}"
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: signed as GET, sent as POST",
+      "request": {
+        "method": "POST",
+        "target": "/api/v2/monitor/report",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=613bfb724abba081401d10caca3d0bd69cf1c444b10d2eae9bd72125bc0209df"
+        },
+        "body": "{\"schema\":1,\"sentAt\":\"2026-11-11T12:00:00.000Z\"}"
+      },
+      "accept": false,
+      "reason": "signature_mismatch"
+    },
+    {
+      "name": "refused: a query string, even one that was signed",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/config?revision=7",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=2e8e9b4ffaf8b85cd2c371fdef0e40f8f6644d1f7cbee157b4a195c1ccb27dd6"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "query_present"
+    },
+    {
+      "name": "refused: the timestamp is 61 seconds old",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/health",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862339",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=69084262b48f47bff2418ac6154641c02559a19bcf30eb8ab6fc1557580a572c"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "timestamp_skew"
+    },
+    {
+      "name": "refused: a version 1 signature prefix",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/health",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v1=1953aefcfa4b2af3014ecbfd90dd9b8b001e287cce5ba9b49bca9a28906729bf"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "headers_malformed"
+    },
+    {
+      "name": "refused: uppercase hex in the signature",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/health",
+        "headers": {
+          "x-status-monitor-timestamp": "1762862400",
+          "x-status-monitor-nonce": "11111111111111111111111111111111",
+          "x-status-monitor-signature": "v2=1953AEFCFA4B2AF3014ECBFD90DD9B8B001E287CCE5BA9B49BCA9A28906729BF"
+        },
+        "body": ""
+      },
+      "accept": false,
+      "reason": "headers_malformed"
+    },
+    {
+      "name": "refused: no signature headers at all",
+      "request": {
+        "method": "GET",
+        "target": "/api/v2/monitor/health",
+        "headers": {},
+        "body": ""
+      },
+      "accept": false,
+      "reason": "headers_missing"
+    }
+  ]
+}
