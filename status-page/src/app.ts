@@ -54,7 +54,7 @@ function componentRow(component: ComponentView): HTMLElement {
   const uptime = el("div", undefined, { class: "component-uptime" });
   uptime.append(el("strong", percent(component.uptime.d30)), " uptime · 30 days");
   row.append(name, uptime);
-  const axis = el("div", undefined, { class: "axis", "aria-hidden": "true" });
+  const axis = el("div", undefined, { class: "axis" });
   axis.append(el("span", "30 days ago"), el("span", `24 hours ${percent(component.uptime.h24)} · 7 days ${percent(component.uptime.d7)}`), el("span", "Today"));
   li.append(row, uptimeBars(component.name, component.history), axis);
   return li;
