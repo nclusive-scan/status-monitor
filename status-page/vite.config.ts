@@ -1,5 +1,5 @@
-// Builds the status page (index.html + src/) into dist/, the status-page Worker's assets directory. public/ (fonts,
-// _headers and the acknowledge page's styles.css) is copied as is. Run from the repository root: npm run build:status-page.
+// Builds the status page (index.html, operator/index.html and src/) into dist/, the status-page Worker's assets directory.
+// public/ (fonts, brand/, _headers and the acknowledge page's styles.css) is copied as is. Run from the repository root: npm run build:status-page.
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
@@ -19,5 +19,7 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     // React, motion and the TUFFUI components are about 170 kB gzipped; the operator view is a separate chunk.
     chunkSizeWarningLimit: 600,
+    // "/" is the public status, "/operator" the operator view (its own path, so it can sit behind Cloudflare Access).
+    rollupOptions: { input: { main: fileURLToPath(new URL("./index.html", import.meta.url)), operator: fileURLToPath(new URL("./operator/index.html", import.meta.url)) } },
   },
 });

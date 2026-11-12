@@ -320,7 +320,7 @@ void test("public status carries no URLs, details, codes, contacts or numbers; p
     assert.ok(!publicText.includes(secret), `public status leaks ${secret}`);
   }
   const view = publicProjection(snapshot(T0 + MINUTE, T0));
-  assert.deepEqual(view.incidents[0], { id: "inc_1", component: "Signup", title: "Signup is down", startedAt: new Date(T0).toISOString(),
+  assert.deepEqual(view.incidents[0], { id: "inc_1", component: "Signup", title: "Signup is down", impact: "down", startedAt: new Date(T0).toISOString(),
     acknowledged: false, resolved: false, resolvedAt: null });
   assert.equal(view.overall, "down");
   const privateText = JSON.stringify(privateProjection(snapshot(T0 + MINUTE, T0)));

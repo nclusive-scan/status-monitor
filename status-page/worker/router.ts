@@ -48,7 +48,8 @@ interface Route {
 }
 
 const STATUS: Route = { methods: ["GET"], headers: [] };
-const PRIVATE: Route = { methods: ["GET"], headers: ["authorization"] };
+// The operator key, or the token Cloudflare Access attaches once someone has signed in (the monitor verifies either).
+const PRIVATE: Route = { methods: ["GET"], headers: ["authorization", "cf-access-jwt-assertion"] };
 // GET renders the confirm page, POST (its buttons) acts. Any path under /ack/ goes through unchanged: the monitor
 // verifies the token and answers its own "link not valid" page for anything else.
 const ACK: Route = { methods: ["GET", "HEAD", "POST"], headers: ["content-type"] };

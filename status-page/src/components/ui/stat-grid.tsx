@@ -50,7 +50,7 @@ export function StatGrid({
         {title && <ShellHeader title={title} subtitle={subtitle} />}
         <div
           className={cn(
-            "grid gap-1.5",
+            "grid gap-px bg-border",
             data.length > 2
               ? "grid-cols-1 @xs:grid-cols-2"
               : "grid-cols-1 @md:grid-cols-2",
@@ -101,7 +101,7 @@ function StatCard({
           "rounded-2xl transition-[scale] duration-150 ease-out active:scale-[0.98]",
       )}
     >
-      <Panel className="flex h-full flex-col gap-2 p-4">
+      <Panel className="flex h-full flex-col gap-2 bg-card p-4">
         <p className="text-[0.8125rem] text-muted-foreground">{stat.label}</p>
         <div className="flex items-end justify-between gap-3">
           <RollingNumber

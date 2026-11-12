@@ -1,20 +1,28 @@
-// The operator view: everything /api/private returns, behind STATUS_VIEW_KEY. The key lives only in sessionStorage for
-// this tab and is sent only as an Authorization header to /api/private. Contacts arrive masked from the Worker.
-import { ArrowClockwiseIcon, KeyIcon, LockKeyIcon, SignOutIcon, WarningIcon } from "@phosphor-icons/react";
+// The operator view at /operator: everything /api/private returns. Two ways in. With Cloudflare Access in front of
+// /operator and /api/private, signing in there is enough: the request carries Access's token and the monitor verifies
+// it. Otherwise (or as a break-glass) the operator key: kept in sessionStorage for this tab only and sent only as an
+// Authorization header to /api/private. Contacts arrive masked from the Worker.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/action-button";
-import type { DataColumn, DataRow } from "@/components/ui/data-table";
-import { DataTable } from "@/components/ui/data-table";
-import { EmptyState } from "@/components/ui/empty-state";
-import { StatusPill } from "@/components/ui/status-pill";
-import { Inset, Panel, Shell, ShellHeader } from "@/components/ui/surface";
-import { Tab, TabList, TabPanel, Tabs } from "@/components/ui/tab-panels";
-import { TextField } from "@/components/ui/text-field";
-import { TONE, when } from "./format.ts";
-import { asStatus, checkName, LABEL } from "./model.ts";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartCard } from "@/components/ui/chart-card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { StatGrid } from "@/components/ui/stat-grid";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TickGauge } from "@/components/ui/tick-gauge";
+import { cn } from "@/lib/utils";
+import { hourLabel, ms, percent, TONE_TEXT, when } from "./format.ts";
+import { AlertTriangle, Lock, LogOut, Refresh } from "./icons/index.tsx";
+import type { Summary } from "./model.ts";
+import { asStatus, checkName, isPublicStatus, LABEL, summarize } from "./model.ts";
 import { focusAfterSwap, monitorFacts, refreshFailedText, str, warningText } from "./operator.ts";
 
 const KEY_STORAGE = "status-monitor-operator-key";
+const UPTIME_TARGET = 0.999;
 
 function storedKey(): string | null {
   try {
@@ -39,191 +47,198 @@ const isoField = (record: unknown, key: string): string | null => {
   const value = field(record, key);
   return typeof value === "string" ? value : null;
 };
-const text = (value: unknown): string => str(value);
 
-function StatusCell({ value }: { value: unknown }): React.JSX.Element {
+function StatusBadge({ value }: { value: unknown }): React.JSX.Element {
   const status = asStatus(value);
-  return <StatusPill size="sm" tone={TONE[status]}>{LABEL[status]}</StatusPill>;
+  return <span className={cn("text-sm", TONE_TEXT[status])}>{LABEL[status]}</span>;
 }
 
-function Table<R extends DataRow>({ title, subtitle, rows, columns, empty }: {
-  title: string; subtitle?: string; rows: R[]; columns: DataColumn<R>[]; empty: string;
-}): React.JSX.Element {
-  if (rows.length === 0) {
-    return (
-      <Shell className="max-w-none">
-        <ShellHeader as="h3" title={title} />
-        <Panel><EmptyState compact title={empty} /></Panel>
-      </Shell>
-    );
-  }
-  return <DataTable className="max-w-none" title={title} {...(subtitle === undefined ? {} : { subtitle })} data={rows} columns={columns} pageSize={10} />;
-}
+// ---- Overview: the charts ----
 
-function Overview({ data }: { data: unknown }): React.JSX.Element {
-  const monitor = field(data, "monitor");
-  const warnings = list(field(monitor, "warnings")).filter((warning): warning is string => typeof warning === "string");
+function Charts({ summary }: { summary: Summary }): React.JSX.Element | null {
+  const stats = summary.stats;
+  if (stats === null || stats.total === 0) return null;
+  const hours = summary.components[0]?.latency.map((point) => point.hour) ?? [];
+  const first = hours.findIndex((_, index) => summary.components.some((component) => typeof component.latency[index]?.avgMs === "number"));
+  const series = first < 0 ? [] : summary.components.slice(0, 4).map((component) => {
+    let previous = 0;
+    return {
+      id: component.id, label: component.name,
+      values: hours.slice(first).map((_, offset) => {
+        const value = component.latency[first + offset]?.avgMs;
+        if (typeof value === "number") previous = Math.round(value);
+        return previous;
+      }),
+    };
+  });
+  const uptime = stats.uptime30;
+  const checks = summary.components.flatMap((component) => component.checks);
+  const passing = checks.filter((check) => check.shown === "ok").length;
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Shell className="max-w-none">
-        <ShellHeader as="h3" title="Monitor" subtitle="Configuration, delivery and the platform link" />
-        <Panel className="p-1.5">
-          <dl className="grid grid-cols-1 gap-1.5">
-            {monitorFacts(monitor, when).map(([label, value]) => (
-              <Inset key={label} className="grid gap-0.5 px-3.5 py-2.5 sm:grid-cols-[11rem_minmax(0,1fr)] sm:gap-3">
-                <dt className="text-xs text-muted-foreground sm:text-[0.8125rem]">{label}</dt>
-                <dd className="text-sm [overflow-wrap:anywhere]">{value}</dd>
-              </Inset>
-            ))}
-          </dl>
-        </Panel>
-      </Shell>
-      <Shell className="max-w-none">
-        <ShellHeader as="h3" icon={WarningIcon} title="Warnings" subtitle={warnings.length === 0 ? "Nothing needs attention" : `${String(warnings.length)} to look at`} />
-        <Panel className="p-1.5">
-          {warnings.length === 0 ? (
-            <EmptyState compact title="No warnings" description="Configuration, channels and the heartbeat all look right." />
-          ) : (
-            <ul className="space-y-1.5">
-              {warnings.map((warning) => (
-                <li key={warning} className="rounded-xl bg-foreground/[0.04] px-3.5 py-3">
-                  <p className="text-sm text-pretty">{warningText(warning)}</p>
-                  <p className="mt-1 font-mono text-[0.6875rem] text-muted-foreground">{warning}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-      </Shell>
+    <div className="space-y-4">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <StatGrid className="max-w-none" data={[
+          { id: "uptime", label: "Uptime, 30 days", value: percent(uptime) },
+          { id: "latency", label: "Average response, 24 h", value: ms(stats.latency24), higherIsBetter: false },
+          { id: "checks", label: "Checks passing", value: `${String(passing)}/${String(checks.length)}` },
+          { id: "incidents", label: "Incidents, 30 days", value: String(stats.incidents30) },
+        ]} />
+        <TickGauge className="max-w-none" title="Uptime against target" subtitle="30-day mean" value={uptime === null ? 0 : uptime / 100}
+          target={UPTIME_TARGET} targetLabel="99.9%" format={(value) => (uptime === null ? "—" : `${(value * 100).toFixed(2)}%`)} />
+      </div>
+      {series.length === 0 || hours.length - first < 2 ? null : (
+        <ChartCard className="max-w-none" type="area" title="Response time" subtitle="Hourly average, ms"
+          format={(value) => `${String(Math.round(value))} ms`} data={{ labels: hours.slice(first).map(hourLabel), series }} />
+      )}
     </div>
   );
 }
 
-type CheckRowData = { id: string; check: string; component: string; status: string; detail: string; latency: number | null; observed: string | null };
-type LogRowData = { id: string; at: string | null; kind: string; to: string; channel: string; result: string; delivery: string };
-type ContactRowData = { id: string; contact: string; channel: string; state: string; code: string; since: string | null };
+function Overview({ data, summary }: { data: unknown; summary: Summary | null }): React.JSX.Element {
+  const monitor = field(data, "monitor");
+  const warnings = list(field(monitor, "warnings")).filter((warning): warning is string => typeof warning === "string");
+  return (
+    <div className="space-y-4">
+      {warnings.map((warning) => (
+        <Alert key={warning}>
+          <AlertTriangle className="text-warn" />
+          <AlertTitle className="font-normal">{warningText(warning)}</AlertTitle>
+          <AlertDescription className="font-mono text-xs">{warning}</AlertDescription>
+        </Alert>
+      ))}
+      {summary === null ? null : <Charts summary={summary} />}
+      <Card>
+        <CardHeader><CardTitle id="private-monitor-title">Monitor</CardTitle></CardHeader>
+        <CardContent>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[12rem_minmax(0,1fr)]">
+            {monitorFacts(monitor, when).map(([label, value]) => (
+              <div key={label} className="contents">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="[overflow-wrap:anywhere]">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ---- Tables ----
+
+function DataCard({ title, description, empty, head, rows }: {
+  title: string; description?: string; empty: string; head: string[]; rows: { key: string; cells: React.ReactNode[] }[];
+}): React.JSX.Element {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description === undefined ? null : <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? <p className="text-sm text-muted-foreground">{empty}</p> : (
+          <Table>
+            <TableHeader><TableRow>{head.map((label) => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.key}>{row.cells.map((cell, index) => <TableCell key={String(index)} className="whitespace-normal [overflow-wrap:anywhere]">{cell}</TableCell>)}</TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function Checks({ data }: { data: unknown }): React.JSX.Element {
-  const rows: CheckRowData[] = list(field(data, "checks")).map((check) => ({
-    id: text(field(check, "id")), check: checkName(text(field(check, "id"))), component: text(field(check, "component")),
-    status: text(field(check, "status")), detail: text(field(check, "detail")),
-    latency: typeof field(check, "latencyMs") === "number" ? Number(field(check, "latencyMs")) : null, observed: isoField(check, "observedAt"),
-  }));
   return (
-    <Table title="Latest result per check" rows={rows} empty="No check results yet." columns={[
-      { key: "check", label: "Check", sortable: true, priority: 1 },
-      { key: "status", label: "Status", sortable: true, priority: 1, format: (value) => <StatusCell value={value} /> },
-      { key: "detail", label: "Detail", sortable: true, priority: 2, format: (value) => <span className="font-mono text-xs">{text(value)}</span> },
-      { key: "component", label: "Component", sortable: true, priority: 2 },
-      { key: "latency", label: "Latency", align: "right", sortable: true, priority: 3, format: (value) => (typeof value === "number" ? `${String(value)} ms` : "—") },
-      { key: "observed", label: "Observed", align: "right", sortable: true, priority: 3, format: (value) => when(typeof value === "string" ? value : null) },
-    ]} />
-  );
-}
-
-function Notifications({ data }: { data: unknown }): React.JSX.Element {
-  const rows: LogRowData[] = list(field(data, "notifications")).map((entry, index) => {
-    const error = field(entry, "lastError"), provider = field(entry, "provider"), delivery = field(entry, "deliveryStatus"), code = field(entry, "deliveryCode");
-    const logged = typeof provider === "string" && provider.startsWith("log:") ? " · logged, not sent" : "";
-    return {
-      id: `${text(field(entry, "incidentId"))}-${String(index)}`, at: isoField(entry, "createdAt"), kind: text(field(entry, "kind")),
-      to: `${text(field(entry, "contact"))} (${text(field(entry, "to"))})`, channel: text(field(entry, "channel")),
-      result: `${text(field(entry, "status"))} ×${text(field(entry, "attempts"))}${typeof error === "string" ? ` · ${error}` : ""}${logged}`,
-      delivery: typeof delivery === "string" ? `${delivery}${typeof code === "string" ? ` · ${code}` : ""}` : "—",
-    };
-  });
-  return (
-    <Table title="Notification log" rows={rows} empty="No notifications yet." columns={[
-      { key: "at", label: "Created", sortable: true, priority: 1, format: (value) => when(typeof value === "string" ? value : null) },
-      { key: "kind", label: "Kind", sortable: true, priority: 1 },
-      { key: "to", label: "To", sortable: true, priority: 2 },
-      { key: "channel", label: "Channel", sortable: true, priority: 2 },
-      { key: "result", label: "Result", priority: 3 },
-      { key: "delivery", label: "Delivery", priority: 3 },
-    ]} />
-  );
-}
-
-function Contacts({ data }: { data: unknown }): React.JSX.Element {
-  const rows: ContactRowData[] = list(field(data, "contactHealth")).map((row, index) => ({
-    id: `${text(field(row, "contactId"))}-${text(field(row, "channel"))}-${String(index)}`, contact: text(field(row, "contactId")),
-    channel: text(field(row, "channel")), state: text(field(row, "state")), code: text(field(row, "code")), since: isoField(row, "since"),
-  }));
-  return (
-    <Table title="Contact channel health" rows={rows} empty="Every contact's channels are working." columns={[
-      { key: "contact", label: "Contact", sortable: true },
-      { key: "channel", label: "Channel", sortable: true },
-      { key: "state", label: "State", sortable: true },
-      { key: "code", label: "Code" },
-      { key: "since", label: "Since", align: "right", format: (value) => when(typeof value === "string" ? value : null) },
-    ]} />
-  );
-}
-
-function Lines({ title, subtitle, items, empty }: { title: string; subtitle?: string; items: [string, string][]; empty: string }): React.JSX.Element {
-  return (
-    <Shell className="max-w-none">
-      <ShellHeader as="h3" title={title} subtitle={subtitle} />
-      <Panel className="p-1.5">
-        {items.length === 0 ? <EmptyState compact title={empty} /> : (
-          <ul className="space-y-1.5">
-            {items.map(([head, detail], index) => (
-              <li key={`${head}-${String(index)}`} className="rounded-xl bg-foreground/[0.04] px-3.5 py-2.5">
-                <p className="text-sm font-medium [overflow-wrap:anywhere]">{head}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground [overflow-wrap:anywhere]">{detail}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-    </Shell>
+    <DataCard title="Latest result per check" empty="No check results yet." head={["Check", "Component", "Status", "Detail", "Latency", "Observed"]}
+      rows={list(field(data, "checks")).map((check) => ({
+        key: str(field(check, "id")),
+        cells: [checkName(str(field(check, "id"))), str(field(check, "component")), <StatusBadge key="s" value={field(check, "status")} />,
+          <span key="d" className="font-mono text-xs">{str(field(check, "detail"))}</span>,
+          typeof field(check, "latencyMs") === "number" ? `${str(field(check, "latencyMs"))} ms` : "—", when(isoField(check, "observedAt"))],
+      }))} />
   );
 }
 
 function Incidents({ data }: { data: unknown }): React.JSX.Element {
-  const escalation = list(field(data, "escalation")).map((entry): [string, string] => [
-    `${text(field(entry, "incidentId"))} · ${text(field(entry, "phase"))}`,
-    `cycle ${text(field(entry, "cycle"))}, tier ${text(field(entry, "tierIndex"))} · ack code ${text(field(entry, "ackCode"))} · `
-    + `acknowledged by ${text(field(entry, "acknowledgedBy"))} · next step ${when(isoField(entry, "nextStepAt"))}`,
-  ]);
-  const drills = list(field(data, "drills")).map((drill): [string, string] => [
-    `${text(field(drill, "contactId"))} · ${text(field(drill, "outcome") ?? (isoField(drill, "resolvedAt") === null ? "waiting" : "done"))}`,
-    `${when(isoField(drill, "openedAt"))}${typeof field(drill, "acknowledgedVia") === "string" ? ` · acknowledged by ${text(field(drill, "acknowledgedVia"))}` : ""}`,
-  ]);
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <Lines title="Escalation" subtitle="Every incident's paging state" items={escalation} empty="No incidents." />
-      <Lines title="Paging drills" items={drills} empty="No drills yet." />
+    <div className="space-y-4">
+      <DataCard title="Escalation" description="Every incident's paging state" empty="No incidents." head={["Incident", "Phase", "Tier", "ACK code", "Acknowledged by", "Next step"]}
+        rows={list(field(data, "escalation")).map((entry) => ({
+          key: str(field(entry, "incidentId")),
+          cells: [<span key="i" className="font-mono text-xs">{str(field(entry, "incidentId"))}</span>, str(field(entry, "phase")),
+            `cycle ${str(field(entry, "cycle"))}, tier ${str(field(entry, "tierIndex"))}`, str(field(entry, "ackCode")), str(field(entry, "acknowledgedBy")),
+            when(isoField(entry, "nextStepAt"))],
+        }))} />
+      <DataCard title="Paging drills" empty="No drills yet." head={["Contact", "Outcome", "Opened", "Acknowledged by"]}
+        rows={list(field(data, "drills")).map((drill, index) => ({
+          key: `${str(field(drill, "incidentId"))}-${String(index)}`,
+          cells: [str(field(drill, "contactId")), str(field(drill, "outcome") ?? (isoField(drill, "resolvedAt") === null ? "waiting" : "done")),
+            when(isoField(drill, "openedAt")), str(field(drill, "acknowledgedVia"))],
+        }))} />
     </div>
   );
 }
 
-function Maintenance({ data }: { data: unknown }): React.JSX.Element {
-  const components = (value: unknown): string => (value === "all" ? "All components" : list(value).map(text).join(", "));
-  const windows = list(field(data, "maintenanceWindows")).map((window): [string, string] => [
-    `${components(field(window, "components"))} · ${when(isoField(window, "startsAt"))} to ${when(isoField(window, "endsAt"))}`,
-    `${text(field(window, "id"))}${typeof field(window, "note") === "string" ? ` · ${text(field(window, "note"))}` : ""}`,
-  ]);
-  return <Lines title="Maintenance windows" subtitle="Every configured window, with its note" items={windows} empty="No maintenance windows." />;
-}
-
-function DeepPayload({ data }: { data: unknown }): React.JSX.Element {
-  const deep = list(field(data, "checks")).filter((check) => field(check, "type") === "deep" && !text(field(check, "id")).includes("."));
+function Notifications({ data }: { data: unknown }): React.JSX.Element {
   return (
-    <Shell className="max-w-none">
-      <ShellHeader as="h3" title="Deep health payload" subtitle="As the platform last returned it" />
-      <Panel className="p-1.5">
-        <Inset className="overflow-x-auto p-4">
-          <pre className="font-mono text-xs leading-relaxed">{JSON.stringify(deep.map((check) => field(check, "data")), null, 2)}</pre>
-        </Inset>
-      </Panel>
-    </Shell>
+    <DataCard title="Notifications" empty="No notifications yet." head={["Created", "Kind", "To", "Channel", "Result", "Delivery"]}
+      rows={list(field(data, "notifications")).map((entry, index) => {
+        const error = field(entry, "lastError"), provider = field(entry, "provider"), delivery = field(entry, "deliveryStatus"), code = field(entry, "deliveryCode");
+        const logged = typeof provider === "string" && provider.startsWith("log:") ? " · logged, not sent" : "";
+        return {
+          key: `${str(field(entry, "incidentId"))}-${String(index)}`,
+          cells: [when(isoField(entry, "createdAt")), str(field(entry, "kind")), `${str(field(entry, "contact"))} (${str(field(entry, "to"))})`,
+            str(field(entry, "channel")), `${str(field(entry, "status"))} ×${str(field(entry, "attempts"))}${typeof error === "string" ? ` · ${error}` : ""}${logged}`,
+            typeof delivery === "string" ? `${delivery}${typeof code === "string" ? ` · ${code}` : ""}` : "—"],
+        };
+      })} />
   );
 }
 
+function Contacts({ data }: { data: unknown }): React.JSX.Element {
+  return (
+    <DataCard title="Contact channel health" empty="Every contact's channels are working." head={["Contact", "Channel", "State", "Code", "Since"]}
+      rows={list(field(data, "contactHealth")).map((row, index) => ({
+        key: `${str(field(row, "contactId"))}-${str(field(row, "channel"))}-${String(index)}`,
+        cells: [str(field(row, "contactId")), str(field(row, "channel")), str(field(row, "state")), str(field(row, "code")), when(isoField(row, "since"))],
+      }))} />
+  );
+}
+
+function Maintenance({ data }: { data: unknown }): React.JSX.Element {
+  const components = (value: unknown): string => (value === "all" ? "All components" : list(value).map(str).join(", "));
+  return (
+    <DataCard title="Maintenance windows" description="Every configured window, with its private note" empty="No maintenance windows."
+      head={["Components", "Starts", "Ends", "Note"]}
+      rows={list(field(data, "maintenanceWindows")).map((window) => ({
+        key: str(field(window, "id")),
+        cells: [components(field(window, "components")), when(isoField(window, "startsAt")), when(isoField(window, "endsAt")), str(field(window, "note"))],
+      }))} />
+  );
+}
+
+function DeepPayload({ data }: { data: unknown }): React.JSX.Element {
+  const deep = list(field(data, "checks")).filter((check) => field(check, "type") === "deep" && !str(field(check, "id")).includes("."));
+  return (
+    <Card>
+      <CardHeader><CardTitle>Deep health payload</CardTitle><CardDescription>As the platform last returned it</CardDescription></CardHeader>
+      <CardContent><pre className="overflow-x-auto rounded-md bg-muted p-4 font-mono text-xs leading-relaxed">{JSON.stringify(deep.map((check) => field(check, "data")), null, 2)}</pre></CardContent>
+    </Card>
+  );
+}
+
+// ---- Sign-in and loading ----
+
+type Via = "access" | "key";
+
 export function OperatorView(): React.JSX.Element {
   const [data, setData] = useState<unknown>(null);
-  const [shown, setShown] = useState<"form" | "data">(storedKey() === null ? "form" : "data");
+  const [via, setVia] = useState<Via>("key");
+  const [shown, setShown] = useState<"checking" | "form" | "data">("checking");
   const [keyError, setKeyError] = useState("");
   const [refreshError, setRefreshError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -245,6 +260,7 @@ export function OperatorView(): React.JSX.Element {
     if (target !== null) document.getElementById(target)?.focus();
   }, [shown]);
 
+  /** Without a stored key the request relies on an Access sign-in; a 401 then just shows the key form, no error. */
   const load = useCallback(async () => {
     const key = storedKey();
     const locked = (): void => {
@@ -253,22 +269,23 @@ export function OperatorView(): React.JSX.Element {
       loadedAt.current = null;
       setData(null);
     };
-    if (key === null) {
-      locked();
-      return;
-    }
     setLoading(true);
     try {
-      const response = await fetch("/api/private", { headers: { authorization: `Bearer ${key}`, accept: "application/json" }, cache: "no-store" });
+      const headers: Record<string, string> = { accept: "application/json" };
+      if (key !== null) headers["authorization"] = `Bearer ${key}`;
+      const response = await fetch("/api/private", { headers, cache: "no-store", credentials: "same-origin" });
       if (response.status === 401) {
-        storeKey(null);
+        if (key !== null) {
+          storeKey(null);
+          setKeyError("That key was not accepted.");
+        }
         locked();
-        setKeyError("That key was not accepted.");
         return;
       }
       if (!response.ok) throw new Error(String(response.status));
       const body: unknown = await response.json();
       setData(body);
+      setVia(key === null ? "access" : "key");
       loadedAt.current = new Date().toISOString();
       setKeyError("");
       setRefreshError("");
@@ -276,7 +293,7 @@ export function OperatorView(): React.JSX.Element {
     } catch {
       if (loadedAt.current === null) {
         swap("form");
-        setKeyError("The operator view could not be loaded. Try again.");
+        if (key !== null) setKeyError("The operator view could not be loaded. Try again.");
       } else {
         // Older data stays on screen, with a visible (and announced) note that it could not be refreshed and from when it is.
         setRefreshError(refreshFailedText(loadedAt.current, when));
@@ -290,76 +307,76 @@ export function OperatorView(): React.JSX.Element {
     void load();
   }, [load]);
 
+  if (shown === "checking") return <p className="text-center text-sm text-muted-foreground" aria-busy="true">Loading…</p>;
+
   if (shown === "form" || data === null) {
     return (
-      <div className="mx-auto max-w-md pt-6">
-        <h1 className="sr-only">Operator view</h1>
-        <Shell>
-          <ShellHeader as="h2" icon={LockKeyIcon} title="Operator view" subtitle="Every check, escalation and notification" />
-          <Panel className="p-5">
-            <form
-              ref={formRef}
-              id="key-form"
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const input = new FormData(event.currentTarget).get("key");
-                if (typeof input !== "string" || input.trim() === "") return;
-                storeKey(input.trim());
-                event.currentTarget.reset();
-                void load();
-              }}
-            >
-              <TextField
-                id="view-key"
-                name="key"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                label="Operator key"
-                description="Kept in this tab only and sent only to this site."
-                {...(keyError === "" ? {} : { error: keyError })}
-              />
-              <Button type="submit" variant="primary" size="md" icon={KeyIcon} loading={loading} className="w-full">Open operator view</Button>
-            </form>
-          </Panel>
-        </Shell>
-      </div>
+      <Card className="mx-auto max-w-sm">
+        <CardHeader>
+          <CardTitle><h1 className="flex items-center gap-2 text-base font-semibold"><Lock />Operator sign-in</h1></CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form ref={formRef} id="key-form" className="space-y-4" onSubmit={(event) => {
+            event.preventDefault();
+            const input = new FormData(event.currentTarget).get("key");
+            if (typeof input !== "string" || input.trim() === "") return;
+            storeKey(input.trim());
+            event.currentTarget.reset();
+            void load();
+          }}>
+            <div className="space-y-2">
+              <Label htmlFor="view-key">Operator key</Label>
+              <Input id="view-key" name="key" type="password" autoComplete="off" spellCheck={false}
+                aria-invalid={keyError === "" ? undefined : true} aria-describedby={keyError === "" ? "view-key-hint" : "view-key-error"} />
+              {keyError === ""
+                ? <p id="view-key-hint" className="text-xs text-muted-foreground">Forgotten when you close this tab.</p>
+                : <p id="view-key-error" role="alert" className="text-xs text-bad">{keyError}</p>}
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>Open</Button>
+          </form>
+        </CardContent>
+      </Card>
     );
   }
 
+  const summary = isPublicStatus(data) ? summarize(data, when) : null;
   return (
-    <div ref={contentRef} id="private-content" className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3 px-1">
+    <div ref={contentRef} id="private-content" className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 id="private-monitor-heading" tabIndex={-1} className="text-2xl font-semibold tracking-tight outline-none">Operator view</h1>
-          <p className="text-sm text-muted-foreground">Loaded {when(loadedAt.current)}</p>
+          <p className="text-sm text-muted-foreground">
+            Loaded {when(loadedAt.current)}
+            {summary === null ? null : <> · <span className={TONE_TEXT[summary.overall]}>{summary.headline}</span></>}
+          </p>
         </div>
-        <div className="flex gap-1.5">
-          <Button icon={ArrowClockwiseIcon} iconWeight="bold" loading={loading} onClick={() => void load()}>Refresh</Button>
-          <Button variant="quiet" icon={SignOutIcon} onClick={() => { storeKey(null); void load(); }}>Forget key</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={loading} onClick={() => void load()}><Refresh />Refresh</Button>
+          {via === "access" ? (
+            <Button variant="ghost" size="sm" asChild><a href="/cdn-cgi/access/logout"><LogOut />Sign out</a></Button>
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => { storeKey(null); void load(); }}><LogOut />Forget key</Button>
+          )}
         </div>
       </div>
-      <p id="private-error" role="alert" className={refreshError === "" ? "sr-only" : "rounded-xl bg-negative/10 px-4 py-2.5 text-sm text-negative"}>{refreshError}</p>
-      <Tabs defaultValue="overview" variant="pills">
-        <TabList label="Operator sections">
-          <Tab value="overview">Overview</Tab>
-          <Tab value="checks" count={list(field(data, "checks")).length}>Checks</Tab>
-          <Tab value="incidents" count={list(field(data, "escalation")).length}>Incidents</Tab>
-          <Tab value="log" count={list(field(data, "notifications")).length}>Notifications</Tab>
-          <Tab value="contacts">Contacts</Tab>
-          <Tab value="maintenance">Maintenance</Tab>
-          <Tab value="deep">Deep payload</Tab>
-        </TabList>
-        <div className="pt-3">
-          <TabPanel value="overview"><Overview data={data} /></TabPanel>
-          <TabPanel value="checks" lazy><Checks data={data} /></TabPanel>
-          <TabPanel value="incidents" lazy><Incidents data={data} /></TabPanel>
-          <TabPanel value="log" lazy><Notifications data={data} /></TabPanel>
-          <TabPanel value="contacts" lazy><Contacts data={data} /></TabPanel>
-          <TabPanel value="maintenance" lazy><Maintenance data={data} /></TabPanel>
-          <TabPanel value="deep" lazy><DeepPayload data={data} /></TabPanel>
-        </div>
+      <p id="private-error" role="alert" className={refreshError === "" ? "sr-only" : "rounded-md border border-bad/30 px-4 py-2.5 text-sm text-bad"}>{refreshError}</p>
+      <Tabs defaultValue="overview">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="checks">Checks <Badge variant="secondary">{list(field(data, "checks")).length}</Badge></TabsTrigger>
+          <TabsTrigger value="incidents">Incidents <Badge variant="secondary">{list(field(data, "escalation")).length}</Badge></TabsTrigger>
+          <TabsTrigger value="log">Notifications</TabsTrigger>
+          <TabsTrigger value="contacts">Contacts</TabsTrigger>
+          <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+          <TabsTrigger value="deep">Deep payload</TabsTrigger>
+        </TabsList>
+        <TabsContent value="overview" className="pt-2"><Overview data={data} summary={summary} /></TabsContent>
+        <TabsContent value="checks" className="pt-2"><Checks data={data} /></TabsContent>
+        <TabsContent value="incidents" className="pt-2"><Incidents data={data} /></TabsContent>
+        <TabsContent value="log" className="pt-2"><Notifications data={data} /></TabsContent>
+        <TabsContent value="contacts" className="pt-2"><Contacts data={data} /></TabsContent>
+        <TabsContent value="maintenance" className="pt-2"><Maintenance data={data} /></TabsContent>
+        <TabsContent value="deep" className="pt-2"><DeepPayload data={data} /></TabsContent>
       </Tabs>
     </div>
   );

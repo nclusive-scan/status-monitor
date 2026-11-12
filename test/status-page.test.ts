@@ -109,9 +109,9 @@ void test("the freshness line is outside every live region; one polite region ca
   assert.equal([...own.matchAll(/aria-live=/g)].length, 1, "exactly one live region in the page's own code");
   assert.match(view, /<p id="announce" role="status" aria-live="polite" aria-atomic="true" className="sr-only">\{announced\}<\/p>/);
   assert.match(view, /useEffect\(\(\) => \{\s*setAnnounced\(headline\);\s*\}, \[headline\]\);/, "announces only a changed headline");
-  const hero = /function Hero\([\s\S]*?\n\}/.exec(view)?.[0] ?? "";
-  assert.ok(hero.includes("Last check"), "the hero holds the ticking last-check time");
-  assert.doesNotMatch(hero, /aria-live|role="status"/, "and it is not live");
+  const banner = /function Banner\([\s\S]*?\n\}/.exec(view)?.[0] ?? "";
+  assert.ok(banner.includes("Updated <Time"), "the banner holds the ticking \"Updated …\" time");
+  assert.doesNotMatch(banner, /aria-live|role="status"/, "and it is not live");
 });
 
 void test("router: each route reaches the monitor at the same path with only its own headers", async () => {
@@ -287,11 +287,11 @@ void test("page model: live status, worst component wins, incidents split into o
     ],
   }), fmt);
   assert.equal(summary.overall, "degraded");
-  assert.equal(summary.headline, "Some systems are degraded");
-  assert.equal(summary.freshness, "Last checked 13:59.");
-  assert.deepEqual(summary.components.map((row) => [row.name, row.label]), [["SIGNUP", "Operational"], ["API", "Degraded"]]);
+  assert.equal(summary.headline, "Some services are having problems");
+  assert.equal(summary.freshness, "Updated 13:59.");
+  assert.deepEqual(summary.components.map((row) => [row.name, row.label]), [["SIGNUP", "Operational"], ["API", "Partial outage"]]);
   assert.ok(summary.incidents !== null);
-  assert.deepEqual(summary.incidents.open, [["API is degraded", "API · started 13:50 · Acknowledged, being worked on"]]);
+  assert.deepEqual(summary.incidents.open, [["API is degraded", "API · started 13:50 · Being fixed"]]);
   assert.deepEqual(summary.incidents.past, [["Signup is down", "Signup · started 10:00 · Resolved 10:30"]]);
 });
 
@@ -301,8 +301,8 @@ void test("page model: a stale monitor shows every component Unknown, a maintena
     components: [component("signup", "unknown", "2026-11-11T15:00:00.000Z"), component("api", "unknown")],
   }), fmt);
   assert.equal(summary.overall, "unknown");
-  assert.equal(summary.headline, "Monitoring is delayed");
-  assert.match(summary.freshness, /has not reported since 13:40/);
+  assert.equal(summary.headline, "We can't confirm status right now");
+  assert.equal(summary.freshness, "Last confirmed 13:40.");
   assert.deepEqual(summary.components.map((row) => [row.shown, row.note]), [["unknown", null], ["unknown", null]]);
 });
 
@@ -315,8 +315,8 @@ void test("page model: maintenance shows Maintenance with the window end, and do
   assert.equal(summary.headline, "Scheduled maintenance in progress");
   assert.deepEqual(summary.components.map((row) => [row.label, row.note]), [["Operational", null], ["Maintenance", "until 15:00"]]);
   assert.deepEqual(summary.maintenance, [
-    { components: "API", when: "In progress, until 15:00", active: true },
-    { components: "All components", when: "02:00 to 03:00", active: false },
+    { components: "API", when: "Until 15:00", active: true, startsAt: "2026-11-11T13:00:00.000Z", endsAt: until },
+    { components: "All services", when: "02:00 to 03:00", active: false, startsAt: later.startsAt, endsAt: later.endsAt },
   ]);
   const outage = summarize(payload({ components: [component("signup", "down"), component("api", "ok", until)], maintenance: windows }), fmt);
   assert.equal(outage.overall, "down", "a real outage elsewhere still shows");
@@ -330,7 +330,7 @@ void test("page model: on a failed load the pills reset to Unknown and the lists
   assert.equal(failed.overall, "unknown");
   assert.equal(failed.headline, UNAVAILABLE_HEADLINE);
   assert.deepEqual(failed.components.map((row) => [row.name, row.shown, row.label, row.note, row.uptime.h24]), [
-    ["SIGNUP", "unknown", "Unknown", null, null], ["API", "unknown", "Unknown", null, null],
+    ["SIGNUP", "unknown", "Status unavailable", null, null], ["API", "unknown", "Status unavailable", null, null],
   ]);
   assert.equal(failed.incidents, null);
   assert.deepEqual(failed.maintenance, []);
@@ -415,8 +415,8 @@ void test("styles: the acknowledge page's escalate button is outlined, not the s
 
 void test("styles: operator facts never widen the page on a long unbreakable value; they stack on a phone", () => {
   const view = read("status-page/src/OperatorView.tsx");
-  assert.match(view, /sm:grid-cols-\[11rem_minmax\(0,1fr\)\]/, "label and value side by side from sm, the value column can shrink");
-  assert.match(view, /<dd className="text-sm \[overflow-wrap:anywhere\]">\{value\}<\/dd>/);
+  assert.match(view, /sm:grid-cols-\[12rem_minmax\(0,1fr\)\]/, "label and value side by side from sm, the value column can shrink");
+  assert.match(view, /<dd className="\[overflow-wrap:anywhere\]">\{value\}<\/dd>/);
 });
 
 void test("page model: the site name comes from the snapshot's brand, with a neutral fallback for anything odd", () => {
@@ -426,7 +426,7 @@ void test("page model: the site name comes from the snapshot's brand, with a neu
   assert.equal(siteName("Status"), "Status", "never \"Status status\"");
   for (const odd of [undefined, null, 7, "", " Acme", "Acme ", "<b>Acme</b>", "x".repeat(25), "Acme\nHealth"]) assert.equal(siteName(odd), "Status", String(odd));
   assert.match(read("status-page/index.html"), /<title>Status<\/title>/, "the static fallback is neutral");
-  assert.match(read("status-page/src/App.tsx"), /useState<[^>]+>\(\{ summary: null, brand: "Status", loadedAt: null \}\)/, "and so is the masthead");
+  assert.match(read("status-page/src/App.tsx"), /useState<[^>]+>\(\{ summary: null, brand: "Status" \}\)/, "and so is the masthead");
 });
 
 void test("operator view: standalone names its source and leaves out the platform pull and report", () => {

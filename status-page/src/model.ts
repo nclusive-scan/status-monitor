@@ -30,6 +30,8 @@ export interface PublicComponent {
 export interface PublicMaintenance { components: string[] | "all"; startsAt: string; endsAt: string; active: boolean }
 export interface PublicIncident {
   id: string; component: string; title: string; startedAt: string; acknowledged: boolean; resolved: boolean; resolvedAt: string | null;
+  /** The worst it got: an outage or a partial outage (absent from an older monitor: read as an outage). */
+  impact?: "down" | "degraded";
 }
 export interface PublicStatus {
   /** BRAND_NAME (absent from an older monitor). */
@@ -91,18 +93,26 @@ export interface Stats {
 
 /** One incident on the timeline. */
 export interface IncidentView {
+  readonly id: string;
   readonly title: string;
   readonly component: string;
+  readonly impact: "down" | "degraded";
   readonly state: "investigating" | "acknowledged" | "resolved";
   readonly started: string;
   /** "Resolved Nov 11, 9:53 PM · 14 min", or the state while open. */
   readonly detail: string;
+  readonly startedAt: string;
+  readonly resolvedAt: string | null;
+  /** How long it lasted ("14 min"), once resolved. */
+  readonly lasted: string | null;
 }
 
 export interface MaintenanceView {
   readonly components: string;
   readonly when: string;
   readonly active: boolean;
+  readonly startsAt: string;
+  readonly endsAt: string;
 }
 
 export interface Summary {
@@ -127,15 +137,15 @@ export interface Summary {
 }
 
 export const LABEL: Readonly<Record<Shown, string>> = {
-  ok: "Operational", degraded: "Degraded", down: "Down", unknown: "Unknown", maintenance: "Maintenance", none: "Not listed",
+  ok: "Operational", degraded: "Partial outage", down: "Outage", unknown: "Status unavailable", maintenance: "Maintenance", none: "Not listed",
 };
 export const HEADLINE: Readonly<Record<Shown, string>> = {
-  ok: "All systems operational",
-  degraded: "Some systems are degraded",
-  down: "Some systems are down",
-  unknown: "Status unknown",
+  ok: "All services are working",
+  degraded: "Some services are having problems",
+  down: "Some services are down",
+  unknown: "We can't confirm status right now",
   maintenance: "Scheduled maintenance in progress",
-  none: "No services are listed here yet.",
+  none: "No services listed yet",
 };
 export const UNAVAILABLE_HEADLINE = "Status is unavailable right now";
 export const NO_UPTIME: Uptime = { h24: null, d7: null, d30: null };
@@ -170,7 +180,7 @@ export function siteName(brand: unknown): string {
 
 /** Title and detail line of one incident. */
 export function incidentLines(incident: PublicIncident, format: Format): string[] {
-  const state = incident.resolved ? `Resolved ${format(incident.resolvedAt)}` : incident.acknowledged ? "Acknowledged, being worked on" : "Investigating";
+  const state = incident.resolved ? `Resolved ${format(incident.resolvedAt)}` : incident.acknowledged ? "Being fixed" : "Problem detected";
   return [incident.title, `${incident.component} · started ${format(incident.startedAt)} · ${state}`];
 }
 
@@ -214,10 +224,14 @@ export function duration(ms: number): string {
 function incidentView(incident: PublicIncident, format: Format): IncidentView {
   const state = incident.resolved ? "resolved" : incident.acknowledged ? "acknowledged" : "investigating";
   const took = incident.resolvedAt === null ? Number.NaN : Date.parse(incident.resolvedAt) - Date.parse(incident.startedAt);
+  const lasted = Number.isNaN(took) ? null : duration(took);
   const detail = state === "resolved"
-    ? `Resolved ${format(incident.resolvedAt)}${Number.isNaN(took) ? "" : ` · ${duration(took)}`}`
-    : state === "acknowledged" ? "Acknowledged, being worked on" : "Investigating";
-  return { title: incident.title, component: incident.component, state, started: format(incident.startedAt), detail };
+    ? `Resolved ${format(incident.resolvedAt)}${lasted === null ? "" : ` · ${lasted}`}`
+    : state === "acknowledged" ? "Being fixed" : "Problem detected";
+  return {
+    id: incident.id, title: incident.title, component: incident.component, impact: incident.impact === "degraded" ? "degraded" : "down", state,
+    started: format(incident.startedAt), detail, startedAt: incident.startedAt, resolvedAt: incident.resolvedAt, lasted,
+  };
 }
 
 function overallOf(shown: readonly Shown[], fallback: Status): Shown {
@@ -235,7 +249,7 @@ function overallOf(shown: readonly Shown[], fallback: Status): Shown {
 /** No component is public: one neutral line, whether or not the monitor is current (there is nothing it could vouch for). */
 const EMPTY: Summary = {
   lastRunAt: null, stale: false, staleAfterSeconds: 300, rules: null, attention: [],
-  overall: "none", headline: HEADLINE.none, freshness: "Services show up here, with their uptime and response times, once they are published to this page.", components: [], maintenance: [], incidents: { open: [], past: [] }, stats: null,
+  overall: "none", headline: HEADLINE.none, freshness: "", components: [], maintenance: [], incidents: { open: [], past: [] }, stats: null,
   timeline: { open: [], past: [] },
 };
 
@@ -291,9 +305,9 @@ export function summarize(data: PublicStatus, format: Format): Summary {
   });
   const overall: Shown = stale ? "unknown" : overallOf(components.map((component) => component.shown), asStatus(data.overall));
   const maintenance = (Array.isArray(data.maintenance) ? data.maintenance : []).map((window): MaintenanceView => ({
-    components: window.components === "all" ? "All components" : window.components.map((id) => names.get(id) ?? id).join(", "),
-    when: window.active ? `In progress, until ${format(window.endsAt)}` : `${format(window.startsAt)} to ${format(window.endsAt)}`,
-    active: window.active,
+    components: window.components === "all" ? "All services" : window.components.map((id) => names.get(id) ?? id).join(", "),
+    when: window.active ? `Until ${format(window.endsAt)}` : `${format(window.startsAt)} to ${format(window.endsAt)}`,
+    active: window.active, startsAt: window.startsAt, endsAt: window.endsAt,
   }));
   const since = Date.parse(data.generatedAt) - 30 * DAY_MS;
   const stats: Stats = {
@@ -317,12 +331,11 @@ export function summarize(data: PublicStatus, format: Format): Summary {
     stats,
     timeline: {
       open: data.incidents.filter((incident) => !incident.resolved).map((incident) => incidentView(incident, format)),
-      past: data.incidents.filter((incident) => incident.resolved).map((incident) => incidentView(incident, format)),
+      // The past 30 days, as the page says (the monitor keeps a few days more).
+      past: data.incidents.filter((incident) => incident.resolved && Date.parse(incident.startedAt) >= since).map((incident) => incidentView(incident, format)),
     },
-    headline: stale ? "Monitoring is delayed" : HEADLINE[overall],
-    freshness: stale
-      ? `The monitor has not reported since ${format(data.monitor.lastRunAt)}. Component status is unknown until it does.`
-      : `Last checked ${format(data.monitor.lastRunAt)}.`,
+    headline: stale ? HEADLINE.unknown : HEADLINE[overall],
+    freshness: stale ? `Last confirmed ${format(data.monitor.lastRunAt)}.` : `Updated ${format(data.monitor.lastRunAt)}.`,
     components,
     maintenance,
     incidents: {
@@ -342,7 +355,7 @@ export function unavailable(previous: Summary | null): Summary {
     attention: [],
     overall: "unknown",
     headline: UNAVAILABLE_HEADLINE,
-    freshness: "The latest status could not be loaded. Retrying shortly.",
+    freshness: "Retrying shortly.",
     components: (previous?.components ?? []).map((component) => ({
       ...component, shown: "unknown", label: LABEL.unknown, note: null, uptime: NO_UPTIME,
       history: component.history.map((day) => ({ ...day, uptime: null, band: "none" as const })), latency: [], latencyNow: null,

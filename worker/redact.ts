@@ -2,7 +2,7 @@
 //   Public (/api/status, anyone): per-component status, uptime and history (30 days of daily uptime, 24 hours of hourly
 //   latency), the operations checked for it (each check's name, kind, status, response time and when it last ran, with
 //   a deep check's sub-checks listed by id), the rules that open and resolve an incident, and incidents with title,
-//   start, acknowledged yes/no and resolution. Never URLs, hostnames, detail or error codes, deep values or release
+//   start, impact (outage or partial outage), acknowledged yes/no and resolution. Never URLs, hostnames, detail or error codes, deep values or release
 //   data, contacts, numbers or addresses. Only components
 //   with public: true: a private component's status, uptime, incidents and maintenance windows are left out, and so is
 //   its part in the overall status. With no public component the overall status is "none" (the page's empty state).
@@ -144,6 +144,8 @@ export interface PublicStatus {
     readonly id: string;
     readonly component: string;
     readonly title: string;
+    /** The worst it got while open: "down" (an outage) or "degraded" (a partial outage). */
+    readonly impact: "down" | "degraded";
     readonly startedAt: string;
     readonly acknowledged: boolean;
     readonly resolved: boolean;
@@ -254,6 +256,7 @@ function projection(snapshot: PublicSnapshot, publicOnly: boolean): PublicStatus
       id: incident.id,
       component: names.get(incident.componentId) ?? incident.componentId,
       title: incident.title,
+      impact: incident.peakStatus === "degraded" ? "degraded" as const : "down" as const,
       startedAt: new Date(incident.openedAt).toISOString(),
       acknowledged: incident.acknowledgedAt !== null,
       resolved: incident.resolvedAt !== null,

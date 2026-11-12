@@ -1,7 +1,9 @@
-/* The status page's styles: Tailwind CSS v4 with the shadcn theme tokens (neutral) and the TUFFUI tokens (surface,
-   brand, positive, negative, warning, button), which the components in components/ui are built on. Fonts are served
+/* The status page's styles: Tailwind CSS v4 with the shadcn theme tokens (neutral), which the shadcn components in
+   components/ui use, and the TUFFUI tokens (surface, brand, positive, negative, warning) its charts use. Fonts are served
    from this site (the CSP allows nothing else). Dark mode is the .dark class on <html> (main.tsx). */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "./shadcn.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -83,7 +85,7 @@
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.5 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
@@ -167,6 +169,33 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "ss01", "cv11";
+    font-feature-settings: "ss01";
+  }
+}
+
+/* Status colours for text and marks: the TUFFUI tones, stronger in light mode so small text keeps 4.5:1 on white. */
+:root {
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #c81e1e;
+  --info: #1d4ed8;
+}
+.dark {
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --info: #60a5fa;
+}
+@theme inline {
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }

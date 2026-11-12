@@ -232,7 +232,7 @@ void test("empty public state: no public component gives overall none and a neut
 
   for (const data of [fresh, stale]) {
     const summary = summarize({ ...data, components: [], incidents: [], maintenance: [] }, (iso) => iso ?? "never");
-    assert.deepEqual([summary.overall, summary.headline, summary.components, summary.incidents], ["none", "No services are listed here yet.", [],
+    assert.deepEqual([summary.overall, summary.headline, summary.components, summary.incidents], ["none", "No services listed yet", [],
       { open: [], past: [] }]);
     assert.notEqual(summary.headline, HEADLINE.ok);
     assert.notEqual(summary.headline, HEADLINE.unknown);

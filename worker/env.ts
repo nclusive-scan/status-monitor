@@ -19,6 +19,10 @@ export interface Env {
   /** Signs the config pull and the report (contact details, report write). >= 32 bytes. */
   readonly MONITOR_CONFIG_KEY?: string;
   readonly STATUS_VIEW_KEY?: string;
+  /** Cloudflare Access team domain, "<team>.cloudflareaccess.com": with ACCESS_AUD, /api/private accepts an Access sign-in (access.ts). */
+  readonly ACCESS_TEAM_DOMAIN?: string;
+  /** The Access application's audience (AUD) tag, 64 hex characters. */
+  readonly ACCESS_AUD?: string;
   readonly ACK_SIGNING_KEY?: string;
   readonly TWILIO_ACCOUNT_SID?: string;
   readonly TWILIO_AUTH_TOKEN?: string;

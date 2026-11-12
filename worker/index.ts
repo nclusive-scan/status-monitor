@@ -13,6 +13,7 @@ import { runChecks } from "./checks/run.ts";
 import type { MonitorConfig } from "./config.ts";
 import { monitorMode, statusViewKey, twilioStatusUrl } from "./config.ts";
 import { TWILIO_STATUSES } from "./delivery-health.ts";
+import { accessSettings, verifyAccessToken } from "./access.ts";
 import { constantTimeEqual } from "./crypto.ts";
 import type { Env } from "./env.ts";
 import { envRecord } from "./env.ts";
@@ -219,7 +220,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     const key = statusViewKey(envRecord(env));
     const header = request.headers.get("authorization") ?? "";
     const presented = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-    if (key === null || !constantTimeEqual(presented, key)) {
+    const keyOk = key !== null && presented !== "" && constantTimeEqual(presented, key);
+    // Signed in through Cloudflare Access (when configured): the token Access attached, verified here (access.ts).
+    const access = accessSettings(envRecord(env));
+    const assertion = request.headers.get("cf-access-jwt-assertion") ?? "";
+    const accessOk = !keyOk && access !== null && assertion !== ""
+      && (await verifyAccessToken(assertion, access, { fetch, now: () => Date.now() })) !== null;
+    if (!keyOk && !accessOk) {
       return new Response(JSON.stringify({ error: "unauthorized" }), {
         status: 401,
         headers: { "content-type": "application/json", "cache-control": "no-store", "www-authenticate": "Bearer" },
