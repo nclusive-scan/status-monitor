@@ -7,7 +7,7 @@ import test from "node:test";
 import type { MonitorBinding, ResponseCache, RouterDeps } from "../status-page/worker/router.ts";
 import { handle, MAX_BODY_BYTES } from "../status-page/worker/router.ts";
 import type { PublicStatus } from "../status-page/src/model.ts";
-import { band, dayViews, DEFAULT_SITE_NAME, duration, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
+import { band, checkName, dayViews, DEFAULT_SITE_NAME, duration, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
 import { focusAfterSwap, monitorFacts, refreshFailedText, warningText } from "../status-page/src/operator.ts";
 import { ADOPTED_STATUS_HOST, adoptedMonitorWrangler, adoptedStatusPageWrangler } from "./support/adopted.ts";
 
@@ -94,21 +94,24 @@ void test("static headers set a strict CSP, and the page loads nothing inline or
   const headers = read("status-page/public/_headers");
   assert.match(headers, /Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self';/);
   assert.match(headers, /frame-ancestors 'none'/);
-  const html = read("status-page/public/index.html");
-  assert.doesNotMatch(html, /<script(?![^>]*src="\/app\.js")/, "no inline scripts");
+  const html = read("status-page/index.html");
+  assert.doesNotMatch(html, /<script(?![^>]*src="\/src\/main\.tsx")/, "one module script, no inline scripts");
+  assert.doesNotMatch(html, /\sstyle="|<style[\s>]/, "no inline styles (the CSP refuses them)");
   assert.doesNotMatch(html, /https?:\/\/(?!www\.w3\.org)/, "no external resources");
+  const build = read("scripts/build-status-page.ts");
+  assert.match(build, /STATUS_PAGE_INLINE_CODE/, "the build refuses a page with inline script or style");
+  assert.match(read("status-page/vite.config.ts"), /assetsInlineLimit: 0/, "no assets inlined as data: URLs");
 });
 
 void test("the freshness line is outside every live region; one polite region carries the overall status", () => {
-  const html = read("status-page/public/index.html");
-  const live = [...html.matchAll(/<(\w+)[^>]*aria-live="polite"[^>]*>/g)];
-  assert.equal(live.length, 1, "exactly one live region");
-  assert.match(live[0]?.[0] ?? "", /id="announce"/);
-  assert.match(html, /<p id="announce"[^>]*><\/p>/, "the live region holds nothing but the announcement");
-  const banner = /<div id="overall"[^>]*>/.exec(html)?.[0] ?? "";
-  assert.doesNotMatch(banner, /aria-live|role="status"/, "the banner with the freshness line is not live");
-  const app = read("status-page/src/app.ts");
-  assert.match(app, /if \(announced !== summary\.headline\)/, "announces only a changed headline");
+  const view = read("status-page/src/PublicView.tsx");
+  const own = ["App.tsx", "PublicView.tsx", "OperatorView.tsx"].map((file) => read(`status-page/src/${file}`)).join("\n");
+  assert.equal([...own.matchAll(/aria-live=/g)].length, 1, "exactly one live region in the page's own code");
+  assert.match(view, /<p id="announce" role="status" aria-live="polite" aria-atomic="true" className="sr-only">\{announced\}<\/p>/);
+  assert.match(view, /useEffect\(\(\) => \{\s*setAnnounced\(headline\);\s*\}, \[headline\]\);/, "announces only a changed headline");
+  const hero = /function Hero\([\s\S]*?\n\}/.exec(view)?.[0] ?? "";
+  assert.ok(hero.includes("Last check"), "the hero holds the ticking last-check time");
+  assert.doesNotMatch(hero, /aria-live|role="status"/, "and it is not live");
 });
 
 void test("router: each route reaches the monitor at the same path with only its own headers", async () => {
@@ -350,17 +353,16 @@ void test("operator view: Twilio signature rejections are shown, and every deliv
 });
 
 void test("operator view: a failed refresh says so inside the data (visible and announced), not in the hidden key form", () => {
-  const html = read("status-page/public/index.html");
-  const content = /<div id="private-content"[^>]*>([\s\S]*?)<h2 id="private-monitor-heading"[^>]*>Monitor<\/h2>/.exec(html)?.[1] ?? "";
-  assert.match(content, /<p id="private-error" class="error" role="alert"><\/p>/, "an alert region inside the operator data");
-  const form = /<form id="key-form"[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
+  const view = read("status-page/src/OperatorView.tsx");
+  const content = /<div ref=\{contentRef\} id="private-content"[\s\S]*?<Tabs/.exec(view)?.[0] ?? "";
+  assert.match(content, /<p id="private-error" role="alert"/, "an alert region inside the operator data");
+  const form = /<form[\s\S]*?<\/form>/.exec(view)?.[0] ?? "";
   assert.doesNotMatch(form, /private-error/);
-  const app = read("status-page/src/app.ts");
-  assert.match(app, new RegExp(String.raw`if \(content\.hidden !== false\) error\.textContent = [^;]+;\s*else \{\s*\/\/[^\n]*\n\s*`
-    + String.raw`refreshError\.textContent = refreshFailedText\(privateLoadedAt, when\);`),
+  assert.match(view, /if \(loadedAt\.current === null\) \{[\s\S]*?\} else \{\s*\/\/[^\n]*\n\s*setRefreshError\(refreshFailedText\(loadedAt\.current, when\)\);/,
     "with data on screen, the failure goes to the visible region");
   assert.equal(refreshFailedText("2026-11-11T14:05:00.000Z", fmt), "Could not refresh. Showing data from 14:05; it may be out of date.");
-  assert.match(read("scripts/build-status-page.ts"), /"operator\.js"/, "the build checks the module is emitted");
+  assert.match(read("status-page/src/App.tsx"), /lazy\(async \(\) => \(\{ default: \(await import\("\.\/OperatorView\.tsx"\)\)\.OperatorView \}\)\)/,
+    "the operator view is its own chunk, loaded when opened");
 });
 
 void test("operator view: swapping between the key form and the data hands focus over instead of dropping it to <body>", () => {
@@ -370,14 +372,13 @@ void test("operator view: swapping between the key form and the data hands focus
   // A swap the user did not start (opening the view, a background reload) never moves focus.
   assert.equal(focusAfterSwap("data", false), null);
   assert.equal(focusAfterSwap("form", false), null);
-  const html = read("status-page/public/index.html");
-  assert.match(html, /<h2 id="private-monitor-heading" tabindex="-1">Monitor<\/h2>/, "the heading can take focus");
-  assert.match(/<form id="key-form"[\s\S]*?<\/form>/.exec(html)?.[0] ?? "", /<input id="view-key"/);
-  const app = read("status-page/src/app.ts");
-  assert.match(app, /const target = focusAfterSwap\(shown, hidden\.hidden === false && hidden\.contains\(document\.activeElement\)\);/, "judged before hiding");
-  assert.match(app, /const locked = \(\): void => \{\s*swap\("form"\);/, "every lock (no key, Forget key, 401) goes through the swap");
-  assert.match(app, /refreshError\.textContent = "";\s*swap\("data"\);/, "and so does a successful load");
-  assert.doesNotMatch(app, /(content|form)\.hidden = (true|false);/, "no other path toggles the parts");
+  const view = read("status-page/src/OperatorView.tsx");
+  assert.match(view, /<h1 id="private-monitor-heading" tabIndex=\{-1\}/, "the heading can take focus");
+  assert.match(/<form[\s\S]*?<\/form>/.exec(view)?.[0] ?? "", /id="view-key"/);
+  assert.match(view, /pendingFocus\.current = focusAfterSwap\(next, hidden !== null && hidden\.contains\(document\.activeElement\)\);/, "judged before hiding");
+  assert.match(view, /const locked = \(\): void => \{\s*swap\("form"\);/, "every lock (no key, Forget key, 401) goes through the swap");
+  assert.match(view, /setRefreshError\(""\);\s*swap\("data"\);/, "and so does a successful load");
+  assert.equal([...view.matchAll(/setShown\(/g)].length, 1, "no other path switches the parts");
 });
 
 /** The light and dark values of the page's colour tokens. */
@@ -400,31 +401,22 @@ function contrast(a: string, b: string): number {
   return ((high ?? 0) + 0.05) / ((low ?? 0) + 0.05);
 }
 
-void test("styles: the key field's edge and the selected view toggle have 3:1 contrast in both themes; the ack page's secondary button is not primary", () => {
+void test("styles: the acknowledge page's escalate button is outlined, not the silver primary, with a 3:1 edge in both themes", () => {
   const css = read("status-page/public/styles.css");
-  const border = /\.key-form input \{[^}]*border: 1px solid var\((--[a-z-]+)\)/.exec(css)?.[1] ?? "";
-  // The pressed Status / Operator view button sits on the masthead (--surface) and fills itself with --bg.
-  const pressed = /\.link\[aria-pressed="true"\] \{[^}]*border-color: var\((--[a-z-]+)\)/.exec(css)?.[1] ?? "";
-  const { light, dark } = tokens(css);
-  for (const [theme, values] of [["light", light], ["dark", dark]] as const) {
-    for (const edge of [border, pressed]) {
-      for (const against of ["--surface", "--bg"]) {
-        const ratio = contrast(values.get(edge) ?? "#000000", values.get(against) ?? "#000000");
-        assert.ok(ratio >= 3, `${theme} ${edge} on ${against}: ${ratio.toFixed(2)}:1`);
-      }
-    }
-  }
   const secondary = /\.button\.secondary \{([^}]*)\}/.exec(css)?.[1] ?? "";
   assert.match(secondary, /background: transparent/, "the escalate button (class \"button secondary\") is outlined, not solid");
   assert.match(read("worker/responses.ts"), /class="button secondary">Escalate to the next tier/);
+  const { light, dark } = tokens(css);
+  for (const [theme, values] of [["light", light], ["dark", dark]] as const) {
+    const ratio = contrast(values.get("--border-strong") ?? "#000000", values.get("--inset") ?? "#000000");
+    assert.ok(ratio >= 3, `${theme} button edge on the card: ${ratio.toFixed(2)}:1`);
+  }
 });
 
 void test("styles: operator facts never widen the page on a long unbreakable value; they stack on a phone", () => {
-  const css = read("status-page/public/styles.css");
-  assert.match(css, /\.facts \{[^}]*grid-template-columns: max-content minmax\(0, 1fr\)/, "the value column can shrink below its longest token");
-  assert.match(css, /\.facts dd \{[^}]*overflow-wrap: anywhere/);
-  const phone = /@media \(max-width: 40rem\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
-  assert.match(phone, /\.facts \{ grid-template-columns: minmax\(0, 1fr\)/);
+  const view = read("status-page/src/OperatorView.tsx");
+  assert.match(view, /sm:grid-cols-\[11rem_minmax\(0,1fr\)\]/, "label and value side by side from sm, the value column can shrink");
+  assert.match(view, /<dd className="text-sm \[overflow-wrap:anywhere\]">\{value\}<\/dd>/);
 });
 
 void test("page model: the site name comes from the snapshot's brand, with a neutral fallback for anything odd", () => {
@@ -433,9 +425,8 @@ void test("page model: the site name comes from the snapshot's brand, with a neu
   assert.equal(siteName("A&B Clinics"), "A&B Clinics status");
   assert.equal(siteName("Status"), "Status", "never \"Status status\"");
   for (const odd of [undefined, null, 7, "", " Acme", "Acme ", "<b>Acme</b>", "x".repeat(25), "Acme\nHealth"]) assert.equal(siteName(odd), "Status", String(odd));
-  const html = read("status-page/public/index.html");
-  assert.match(html, /<title>Status<\/title>/, "the static fallback is neutral");
-  assert.match(html, /<p class="brand" id="brand">Status<\/p>/);
+  assert.match(read("status-page/index.html"), /<title>Status<\/title>/, "the static fallback is neutral");
+  assert.match(read("status-page/src/App.tsx"), /useState<[^>]+>\(\{ summary: null, brand: "Status", loadedAt: null \}\)/, "and so is the masthead");
 });
 
 void test("operator view: standalone names its source and leaves out the platform pull and report", () => {
@@ -489,4 +480,48 @@ void test("page model: headline numbers average the public components and count 
   assert.deepEqual([stats.operational, stats.total], [1, 2]);
   assert.equal(summary.components[1]?.latencyNow, 200);
   assert.equal(summary.timeline?.past[0]?.detail, "Resolved 2026-11-10T10:31:00.000Z · 31 min");
+});
+
+void test("page model: checks are named for people, and the affected list names each failing operation, worst first", () => {
+  assert.deepEqual(["notification_backlog_age", "staging_deep.publications", "api_http", "web-dns"].map(checkName),
+    ["Notification backlog age", "Publications", "API HTTP", "Web DNS"]);
+  const at = "2026-11-12T20:46:35.000Z";
+  const data: PublicStatus = {
+    overall: "down", generatedAt: at, monitor: { lastRunAt: at, stale: false, staleAfterSeconds: 300, rules: { openAfterFailures: 2, resolveAfterPasses: 3 } },
+    incidents: [],
+    components: [
+      { id: "web", name: "Web app", status: "down", since: at, uptime: { h24: 90, d7: 99, d30: 99.5 }, lastCheckedAt: at, checks: [
+        { id: "web_http", kind: "http", status: "ok", latencyMs: 58, checkedAt: at },
+        { id: "deep", kind: "deep", status: "down", latencyMs: 51, checkedAt: at },
+        { id: "deep.database", kind: "part", status: "ok", latencyMs: 2, checkedAt: at },
+        { id: "deep.migrations", kind: "part", status: "degraded", latencyMs: 3, checkedAt: at },
+        { id: "deep.publications", kind: "part", status: "down", latencyMs: 2, checkedAt: at },
+      ] },
+      { id: "reader", name: "Reader", status: "ok", since: at, uptime: { h24: 100, d7: 100, d30: 100 }, lastCheckedAt: at,
+        checks: [{ id: "reader_http", kind: "http", status: "ok", latencyMs: 40, checkedAt: at }] },
+    ],
+  };
+  const summary = summarize(data, fmt);
+  assert.deepEqual(summary.rules, { openAfterFailures: 2, resolveAfterPasses: 3 });
+  assert.equal(summary.lastRunAt, at);
+  const web = summary.components[0];
+  assert.deepEqual(web?.checks.map((check) => [check.name, check.kindLabel, check.shown]), [
+    ["Web HTTP", "HTTP request", "ok"], ["Deep health check", "Signed health check", "down"],
+    ["Database", "Platform check", "ok"], ["Migrations", "Platform check", "degraded"], ["Publications", "Platform check", "down"],
+  ]);
+  assert.equal(web.lastCheckedAt, at);
+  assert.deepEqual(summary.attention.map(({ component, check }) => [component, check.name, check.shown]),
+    [["Web app", "Publications", "down"], ["Web app", "Migrations", "degraded"]], "the deep check itself is not repeated: its parts say what is wrong");
+
+  const stale = summarize({ ...data, monitor: { ...data.monitor, stale: true } }, fmt);
+  assert.ok(stale.components.flatMap((component) => component.checks).every((check) => check.shown === "unknown"), "a stale monitor vouches for no check");
+  assert.deepEqual(stale.attention, []);
+  const failed = unavailable(summary);
+  assert.ok(failed.components.flatMap((component) => component.checks).every((check) => check.shown === "unknown" && check.latencyMs === null));
+  assert.deepEqual(failed.attention, []);
+
+  const withoutChecks = data.components.map(({ id, name, status, since, uptime }) => ({ id, name, status, since, uptime }));
+  const older = summarize({ ...data, monitor: { lastRunAt: at, stale: false }, components: withoutChecks }, fmt);
+  assert.deepEqual([older.rules, older.staleAfterSeconds, older.components[0]?.checks, older.components[0]?.lastCheckedAt], [null, 300, [], null],
+    "an older monitor without checks still renders");
 });

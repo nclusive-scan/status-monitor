@@ -5,9 +5,10 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  { ignores: ["node_modules/**", "dist/**", ".wrangler/**", "status-page/dist/**"] },
+  // status-page/src/components/ui and lib/motion-tokens.ts are TUFFUI source copied in by the shadcn CLI: kept as published.
+  { ignores: ["node_modules/**", "dist/**", ".wrangler/**", "status-page/dist/**", "status-page/src/components/ui/**", "status-page/src/lib/motion-tokens.ts"] },
   {
-    files: ["**/*.ts"],
+    files: ["**/*.ts", "status-page/src/**/*.tsx"],
     extends: [...tseslint.configs.strictTypeChecked],
     languageOptions: {
       parserOptions: {

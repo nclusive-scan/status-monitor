@@ -3,6 +3,29 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org).
 
+## 0.3.0 - 2026-11-12
+
+### Changed
+
+- The status page is rebuilt as a React app on [TUFFUI](https://tuffui.com) components (Surface, Status Pill, Stat
+  Grid, Tick Gauge, Chart Card, Data Table, Disclosure, Tab Panels, Text Field, Action Button, Empty State, Loading
+  Skeleton), added with the shadcn CLI and built with Vite and Tailwind CSS v4. It leads with what is affected right
+  now and when the monitor last checked (a live "12 s ago"), then each service with its uptime bars and every
+  operation checked, a sortable table of every check, response times, incidents and how status is decided. The CSP
+  is unchanged: the build emits only files (no inline script or style), fonts stay self-hosted. The operator view is
+  a separate chunk loaded when opened, with tabs for checks, incidents, notifications, contacts, maintenance and the
+  deep payload.
+- The acknowledgement pages' `styles.css` now carries only what they use, restyled to match.
+- `spec/PROTOCOL.md`: a status page MAY show a deep check's sub-check ids, statuses and latencies publicly; `value`,
+  `detail` and `release` stay private.
+
+### Added
+
+- `/api/status` gives each component `lastCheckedAt` and `checks` (id, kind `http`/`dns`/`deep`/`part`, status,
+  latency, `checkedAt`; a deep check's sub-checks that no other component claims are listed under it), and `monitor`
+  gives `staleAfterSeconds` and `rules` (`openAfterFailures`, `resolveAfterPasses`). The public path reads
+  `check_latest` (one row per check); still no run history or logs.
+
 ## 0.2.0 - 2026-11-12
 
 ### Added

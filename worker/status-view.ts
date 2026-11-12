@@ -1,5 +1,5 @@
 // Builds what /api/status and /api/private show. The public snapshot reads only small tables (meta, components, the
-// hourly rollups and incidents), never the run history or the logs, and the object caches its projection briefly:
+// hourly rollups, the latest result per check and incidents), never the run history or the logs, and the object caches its projection briefly:
 // /api/status is unauthenticated and its traffic peaks during an incident, exactly when the same single-threaded
 // Durable Object must keep ingesting runs and firing escalation alarms.
 import { brandOf } from "./brand.ts";
@@ -27,6 +27,9 @@ export function publicSnapshot(store: MonitorStore, loaded: ConfigResult, now: n
     history: store.history(now),
     incidents: store.incidents(now),
     maintenance: loaded.ok ? currentAndUpcoming(loaded.config.maintenance, now) : [],
+    checks: store.checkLatest(),
+    checkOrder: loaded.ok ? loaded.config.targets.checks.map((check) => check.id) : [],
+    rules: loaded.ok ? { openAfterFailures: loaded.config.targets.openAfterFailures, resolveAfterPasses: loaded.config.targets.resolveAfterPasses } : null,
   };
 }
 
@@ -57,7 +60,6 @@ export function fullSnapshot(store: MonitorStore, loaded: ConfigResult, now: num
   return {
     ...publicSnapshot(store, loaded, now, env),
     config: configView(store, loaded, env),
-    checks: store.checkLatest(),
     recentFailures: store.recentFailures(),
     notifications: store.notifications(),
     events: store.events(),

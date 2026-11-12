@@ -237,8 +237,9 @@ void test("empty public state: no public component gives overall none and a neut
     assert.notEqual(summary.headline, HEADLINE.ok);
     assert.notEqual(summary.headline, HEADLINE.unknown);
   }
-  const html = readFileSync(new URL("../status-page/public/index.html", import.meta.url), "utf8");
-  for (const id of ["components-section", "open-section", "history-section"]) assert.match(html, new RegExp(`<section id="${id}"`), `${id} can be hidden`);
+  const view = readFileSync(new URL("../status-page/src/PublicView.tsx", import.meta.url), "utf8");
+  assert.match(view, /const empty = summary\.overall === "none";/);
+  assert.match(view, /\{empty \? null : \(/, "the empty state shows no service, chart, check or incident sections");
 });
 
 void test("email_alert_no_recipient: an email-only component with no email contact in the first tier", () => {

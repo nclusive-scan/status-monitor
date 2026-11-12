@@ -1,0 +1,172 @@
+/* The status page's styles: Tailwind CSS v4 with the shadcn theme tokens (neutral) and the TUFFUI tokens (surface,
+   brand, positive, negative, warning, button), which the components in components/ui are built on. Fonts are served
+   from this site (the CSP allows nothing else). Dark mode is the .dark class on <html> (main.tsx). */
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --button-secondary-hover: var(--button-secondary-hover);
+  --button-secondary: var(--button-secondary);
+  --button-shadow: var(--button-shadow);
+  --color-button-edge: var(--button-edge);
+  --color-button-foreground: var(--button-foreground);
+  --button-hover: var(--button-hover);
+  --button: var(--button);
+  --color-warning: var(--warning);
+  --color-negative: var(--negative);
+  --color-positive: var(--positive);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand: var(--brand);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-surface: var(--surface);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --surface: oklch(0.948 0.002 286);
+  --surface-inset: oklch(1 0 0);
+  --surface-raised: oklch(0.912 0.003 286);
+  --brand: #0071e3;
+  --brand-foreground: #ffffff;
+  --positive: #248a3d;
+  --negative: #d70015;
+  --warning: #c93400;
+  --button: linear-gradient(0deg, #fff 0%, #e6e6e6 100%);
+  --button-hover: linear-gradient(0deg, #fff 0%, #eeeeee 100%);
+  --button-foreground: #111111;
+  --button-edge: rgba(0, 0, 0, 0.1);
+  --button-shadow: 0 0 #0000;
+  --button-secondary: linear-gradient(180deg, #e2e2e2 0%, #ececec 100%);
+  --button-secondary-hover: linear-gradient(180deg, #dadada 0%, #e4e4e4 100%);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --surface: oklch(0.212 0 0);
+  --surface-inset: oklch(0.172 0 0);
+  --surface-raised: oklch(0.265 0 0);
+  --brand: #0a84ff;
+  --brand-foreground: #ffffff;
+  --positive: #30d158;
+  --negative: #ff453a;
+  --warning: #ff9f0a;
+  --button: linear-gradient(0deg, #fff 0%, #ababab 100%);
+  --button-hover: linear-gradient(0deg, #fff 0%, #c2c2c2 100%);
+  --button-foreground: #111111;
+  --button-edge: rgba(255, 255, 255, 0.5);
+  --button-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.1);
+  --button-secondary: linear-gradient(180deg, #1d1d1d 0%, #262626 100%);
+  --button-secondary-hover: linear-gradient(180deg, #242424 0%, #2d2d2d 100%);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "ss01", "cv11";
+  }
+}

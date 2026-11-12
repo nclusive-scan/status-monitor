@@ -15,7 +15,8 @@ besides the monitor itself.
   who has it.
 - **A weekly paging drill**, delivery confirmation through Twilio status callbacks, opt-out handling (STOP/START), and,
   with the optional platform integration, maintenance windows.
-- **A status page** on Workers Static Assets: public status, uptime and incidents, plus an operator view behind a key.
+- **A status page** on Workers Static Assets: what is out right now, when every check last ran, each service's
+  checks, uptime and response times, incidents and the rules behind them, plus an operator view behind a key.
 - **Fails closed**: an invalid configuration stops the run, so an outside dead-man's switch notices. The monitor never
   limps along half-configured.
 
@@ -103,7 +104,7 @@ somewhere other than Cloudflare). See [What this cannot detect](#what-this-canno
 | `worker/signature.ts`, `spec/` | The signed protocol, its specification and the shared test vectors |
 | `worker/config*.ts`, `worker/brand.ts` | Strict config loading; `BRAND_NAME` |
 | `worker/platform-config.ts`, `worker/report.ts` | Optional platform integration: config pull, revision acceptance, report |
-| `status-page/` | The status page Worker: `worker/router.ts`, `src/` (page script), `public/` (HTML, CSS, `_headers`) |
+| `status-page/` | The status page Worker (`worker/router.ts`) and the page: a React app in `src/` built with Vite on [TUFFUI](https://tuffui.com) components (`src/components/ui`, added with the shadcn CLI, `components.json`), `public/` (fonts, `_headers`, the acknowledgement pages' `styles.css`) |
 | `config/*.example.json` | Example targets, escalation policy and platform configuration document |
 
 ## Quick start (standalone)
@@ -399,7 +400,10 @@ Cloudflare's network. Probes leave from varying Cloudflare locations, so your fi
 - The monitor Worker has no public route. The status page Worker is its only caller and forwards only the five paths
   above, with only the headers each one needs.
 - `/api/status` is sanitized: component names, status, uptime (with 30 days of daily uptime and 24 hours of hourly
-  latency per component), incident titles and times, and whether an incident is acknowledged. `/api/private` requires
+  latency per component), the operations checked for each public component (each check's id, kind, status, response
+  time and when it last ran, a deep check's sub-checks by id), the rules that open and resolve an incident, incident
+  titles and times, and whether an incident is acknowledged. Never URLs, hostnames, detail codes, deep values or
+  release data. `/api/private` requires
   the operator key in an `Authorization` header, compared in constant time. The page keeps the key in `sessionStorage`
   only, never in a URL.
 - Acknowledgement links are HMAC-signed, expire, and name one incident and one contact. Opening a link only shows a

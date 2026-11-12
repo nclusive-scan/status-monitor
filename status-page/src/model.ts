@@ -13,8 +13,15 @@ export interface Uptime { h24: number | null; d7: number | null; d30: number | n
 export interface DayPoint { date: string; uptime: number | null }
 /** One hour of response times (ms), null when nothing conclusive was measured. */
 export interface LatencyPoint { hour: string; avgMs: number | null; maxMs: number | null }
+/** One operation checked for a component ("part": a sub-check the watched platform reports in its deep health). */
+export interface PublicCheck { id: string; kind: "http" | "dns" | "deep" | "part"; status: Status; latencyMs: number | null; checkedAt: string | null }
+export interface Rules { openAfterFailures: number; resolveAfterPasses: number }
 export interface PublicComponent {
   id: string; name: string; status: Status; since: string | null; uptime: Uptime; maintenanceUntil?: string | null;
+  /** When any check last reported on it (absent from an older monitor). */
+  lastCheckedAt?: string | null;
+  /** What is checked for it, in configuration order (absent from an older monitor). */
+  checks?: PublicCheck[];
   /** 30 days, oldest first (absent from an older monitor). */
   history?: DayPoint[];
   /** 24 hours, oldest first (absent from an older monitor). */
@@ -27,7 +34,9 @@ export interface PublicIncident {
 export interface PublicStatus {
   /** BRAND_NAME (absent from an older monitor). */
   brand?: string;
-  overall: Status | "none"; generatedAt: string; monitor: { lastRunAt: string | null; stale: boolean }; components: PublicComponent[];
+  overall: Status | "none"; generatedAt: string;
+  monitor: { lastRunAt: string | null; stale: boolean; staleAfterSeconds?: number; rules?: Rules | null };
+  components: PublicComponent[];
   maintenance?: PublicMaintenance[]; incidents: PublicIncident[];
 }
 
@@ -45,6 +54,23 @@ export interface ComponentView {
   readonly latency: readonly LatencyPoint[];
   /** The most recent hour's average response time. */
   readonly latencyNow: number | null;
+  /** When any check last reported on it (ISO), null before the first run. */
+  readonly lastCheckedAt: string | null;
+  /** Since when it has had its current status (ISO). */
+  readonly since: string | null;
+  readonly checks: readonly CheckView[];
+}
+
+/** One checked operation, named for people ("Notification backlog", not "notification_backlog"). */
+export interface CheckView {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: PublicCheck["kind"];
+  /** "HTTP request", "DNS lookup", "Signed health check", "Platform check". */
+  readonly kindLabel: string;
+  readonly shown: Status;
+  readonly latencyMs: number | null;
+  readonly checkedAt: string | null;
 }
 
 /** "ok" 99.95 % and up, "degraded" from 99 %, "down" below; "none": no runs that day. */
@@ -90,6 +116,14 @@ export interface Summary {
   readonly stats: Stats | null;
   /** The same incidents as `incidents`, structured for the timeline (null: unavailable). */
   readonly timeline: { readonly open: readonly IncidentView[]; readonly past: readonly IncidentView[] } | null;
+  /** When the monitor last ran (ISO), null if never or unknown. */
+  readonly lastRunAt: string | null;
+  readonly stale: boolean;
+  readonly staleAfterSeconds: number;
+  /** null: not sent (an older monitor or a refused configuration). */
+  readonly rules: Rules | null;
+  /** Checks that are not passing right now, worst first: what is out. */
+  readonly attention: readonly { readonly component: string; readonly check: CheckView }[];
 }
 
 export const LABEL: Readonly<Record<Shown, string>> = {
@@ -200,12 +234,46 @@ function overallOf(shown: readonly Shown[], fallback: Status): Shown {
 
 /** No component is public: one neutral line, whether or not the monitor is current (there is nothing it could vouch for). */
 const EMPTY: Summary = {
+  lastRunAt: null, stale: false, staleAfterSeconds: 300, rules: null, attention: [],
   overall: "none", headline: HEADLINE.none, freshness: "Services show up here, with their uptime and response times, once they are published to this page.", components: [], maintenance: [], incidents: { open: [], past: [] }, stats: null,
   timeline: { open: [], past: [] },
 };
 
+const ACRONYMS = new Set(["api", "dns", "http", "https", "db", "sms", "url", "ui", "tls", "ssl", "cdn", "id"]);
+/** "notification_backlog_age" -> "Notification backlog age"; "platform.database" -> "Database"; "api_http" -> "API HTTP". */
+export function checkName(id: string): string {
+  const words = (id.split(".").at(-1) ?? id).split(/[_-]+/).filter((word) => word !== "");
+  const named = words.map((word, index) => (ACRONYMS.has(word) ? word.toUpperCase() : index === 0 ? word.charAt(0).toUpperCase() + word.slice(1) : word));
+  return named.length === 0 ? id : named.join(" ");
+}
+export const KIND_LABEL: Readonly<Record<PublicCheck["kind"], string>> = {
+  http: "HTTP request", dns: "DNS lookup", deep: "Signed health check", part: "Platform check",
+};
+const KINDS = new Set(["http", "dns", "deep", "part"]);
+const isKind = (value: unknown): value is PublicCheck["kind"] => typeof value === "string" && KINDS.has(value);
+
+/** The checks as sent, keeping only well-formed ones. A stale monitor vouches for none of them. */
+const isCheck = (value: unknown): value is PublicCheck =>
+  isRecord(value) && typeof Reflect.get(value, "id") === "string" && isKind(Reflect.get(value, "kind"));
+
+function checkViews(checks: readonly PublicCheck[] | undefined, stale: boolean): CheckView[] {
+  const raw: readonly unknown[] = Array.isArray(checks) ? checks : [];
+  return raw.filter(isCheck).map((check) => ({
+    id: check.id, name: check.kind === "deep" ? "Deep health check" : checkName(check.id), kind: check.kind, kindLabel: KIND_LABEL[check.kind], shown: stale ? "unknown" : asStatus(check.status),
+    latencyMs: typeof check.latencyMs === "number" ? check.latencyMs : null, checkedAt: typeof check.checkedAt === "string" ? check.checkedAt : null,
+  }));
+}
+
+const isRules = (value: unknown): value is Rules =>
+  isRecord(value) && typeof Reflect.get(value, "openAfterFailures") === "number" && typeof Reflect.get(value, "resolveAfterPasses") === "number";
+
 export function summarize(data: PublicStatus, format: Format): Summary {
-  if (data.overall === "none" && data.components.length === 0) return EMPTY;
+  const monitorFacts = {
+    lastRunAt: typeof data.monitor.lastRunAt === "string" ? data.monitor.lastRunAt : null, stale: data.monitor.stale,
+    staleAfterSeconds: typeof data.monitor.staleAfterSeconds === "number" ? data.monitor.staleAfterSeconds : 300,
+    rules: isRules(data.monitor.rules) ? data.monitor.rules : null,
+  };
+  if (data.overall === "none" && data.components.length === 0) return { ...EMPTY, ...monitorFacts };
   const stale = data.monitor.stale;
   const names = new Map(data.components.map((component) => [component.id, component.name]));
   const components = data.components.map((component): ComponentView => {
@@ -216,6 +284,9 @@ export function summarize(data: PublicStatus, format: Format): Summary {
       id: component.id, name: component.name, shown, label: LABEL[shown], note: shown === "maintenance" ? `until ${format(until)}` : null,
       uptime: component.uptime, history: dayViews(component.history, data.generatedAt), latency: latency(component.latency),
       latencyNow: numbers(latency(component.latency).map((point) => point.avgMs)).at(-1) ?? null,
+      lastCheckedAt: typeof component.lastCheckedAt === "string" ? component.lastCheckedAt : null,
+      since: typeof component.since === "string" ? component.since : null,
+      checks: checkViews(component.checks, stale),
     };
   });
   const overall: Shown = stale ? "unknown" : overallOf(components.map((component) => component.shown), asStatus(data.overall));
@@ -232,7 +303,16 @@ export function summarize(data: PublicStatus, format: Format): Summary {
     operational: components.filter((component) => component.shown === "ok").length,
     total: components.length,
   };
+  // A failing deep check is left out when its failing parts are listed: they say what is wrong, it only repeats it.
+  const failing = (check: CheckView): boolean => check.shown === "down" || check.shown === "degraded";
+  const explained = new Set(components.flatMap((component) => component.checks).filter((check) => check.kind === "part" && failing(check))
+    .map((check) => check.id.split(".")[0] ?? ""));
+  const attention = components.flatMap((component) => component.checks.filter((check) => failing(check) && !(check.kind === "deep" && explained.has(check.id)))
+    .map((check) => ({ component: component.name, check })))
+    .toSorted((a, b) => RANK[b.check.shown === "down" ? "down" : "degraded"] - RANK[a.check.shown === "down" ? "down" : "degraded"]);
   return {
+    ...monitorFacts,
+    attention,
     overall,
     stats,
     timeline: {
@@ -258,12 +338,15 @@ export function summarize(data: PublicStatus, format: Format): Summary {
  */
 export function unavailable(previous: Summary | null): Summary {
   return {
+    lastRunAt: previous?.lastRunAt ?? null, stale: true, staleAfterSeconds: previous?.staleAfterSeconds ?? 300, rules: previous?.rules ?? null,
+    attention: [],
     overall: "unknown",
     headline: UNAVAILABLE_HEADLINE,
     freshness: "The latest status could not be loaded. Retrying shortly.",
     components: (previous?.components ?? []).map((component) => ({
       ...component, shown: "unknown", label: LABEL.unknown, note: null, uptime: NO_UPTIME,
       history: component.history.map((day) => ({ ...day, uptime: null, band: "none" as const })), latency: [], latencyNow: null,
+      checks: component.checks.map((check) => ({ ...check, shown: "unknown" as const, latencyMs: null })),
     })),
     maintenance: [],
     incidents: null,

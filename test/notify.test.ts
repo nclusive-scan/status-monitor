@@ -296,6 +296,7 @@ const snapshot = (now: number, lastRunAt: number | null): Snapshot => ({
   uptime: new Map([["signup", { h24: 99.5, d7: 99.9, d30: 99.95 }]]),
   history: new Map(),
   incidents: [incident],
+  checkOrder: ["platform_deep"], rules: { openAfterFailures: 2, resolveAfterPasses: 3 },
   checks: [{ checkId: "platform_deep", componentId: "platform_api", type: "deep", status: "ok", inconclusive: false, latencyMs: 12, detail: "ok",
     observedAt: T0, data: { url: "https://platform.example.com/api/v2/monitor/health", release: { version: "1.4.2" } } }],
   recentFailures: [{ checkId: "signup_http", status: "down", detail: "redirect_loop", observedAt: T0, latencyMs: 30 }],
