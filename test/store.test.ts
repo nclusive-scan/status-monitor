@@ -154,6 +154,86 @@ void test("store: uptime from hourly rollups, and 35-day retention", () => {
   assert.equal(store.uptime(later).get("signup"), undefined);
 });
 
+const HOUR = 3600_000, DAY = 24 * HOUR;
+/** One signup result with its own check id and latency. */
+const timed = (check: string, status: Status, latencyMs: number, at: number, inconclusive = false): CheckResult => ({
+  ...result("signup", status, at, inconclusive), checkId: `signup_${check}`, latencyMs,
+});
+
+void test("store: history has 30 UTC days of uptime, oldest first, today last, null on days without runs", () => {
+  const { store } = newStore();
+  store.recordRun(signupDown(T0 - 30 * DAY), targets, policy, T0 - 30 * DAY);
+  for (let minute = 0; minute < 3; minute += 1) {
+    const at = T0 - 29 * DAY + minute * MINUTE;
+    store.recordRun(minute === 0 ? signupDown(at) : allOk(at), targets, policy, at);
+  }
+  for (let minute = 0; minute < 4; minute += 1) store.recordRun(allOk(T0 + minute * MINUTE), targets, policy, T0 + minute * MINUTE);
+  // Just before midnight UTC: the same day as T0. Degraded counts as up, like uptime().
+  const lateToday = Date.UTC(2026, 10, 11, 23, 59, 0);
+  store.recordRun(targets.components.map((item) => result(item.id, item.id === "signup" ? "degraded" : "ok", lateToday)), targets, policy, lateToday);
+
+  const history = store.history(lateToday + 30_000).get("signup")?.history ?? [];
+  assert.equal(history.length, 30);
+  assert.deepEqual(history[0], { date: "2026-10-13", uptime: 66.667 }, "the oldest day is 29 days back; the day before it is out");
+  assert.deepEqual(history[29], { date: "2026-11-11", uptime: 100 }, "today is last");
+  assert.deepEqual(history.slice(1, 29).map((day) => day.uptime), Array.from({ length: 28 }, () => null), "days without runs are null");
+  assert.deepEqual(history.map((day) => day.date).slice(27), ["2026-11-09", "2026-11-10", "2026-11-11"]);
+  assert.equal(store.history(lateToday).get("newsletters")?.history[0]?.uptime, 100);
+  // At midnight the window moves on: the new day is null and the oldest day drops off.
+  const tomorrow = store.history(Date.UTC(2026, 10, 12, 0, 0, 1)).get("signup")?.history ?? [];
+  assert.deepEqual([tomorrow[0]?.date, tomorrow[28], tomorrow[29]], ["2026-10-14", { date: "2026-11-11", uptime: 100 }, { date: "2026-11-12", uptime: null }]);
+  assert.equal(store.history(T0 + 40 * DAY).get("signup"), undefined, "nothing in the window, no entry (the projection fills it with nulls)");
+});
+
+void test("store: history has 24 hours of latency (avg and max of one sample per run); down and inconclusive results are left out", () => {
+  const { storage, store } = newStore();
+  const record = (at: number, results: CheckResult[]): void => {
+    store.recordRun(results, targets, policy, at);
+  };
+  record(T0 - 24 * HOUR, [timed("http", "ok", 999, T0 - 24 * HOUR)]);
+  record(T0 - 3 * HOUR, [timed("http", "ok", 40, T0 - 3 * HOUR)]);
+  // The run's sample is its slowest conclusive result that is not down.
+  record(T0, [timed("http", "ok", 100, T0), timed("dns", "ok", 300, T0)]);
+  record(T0 + MINUTE, [timed("http", "ok", 200, T0 + MINUTE), timed("dns", "down", 5000, T0 + MINUTE)]);
+  record(T0 + 2 * MINUTE, [timed("http", "ok", 50, T0 + 2 * MINUTE), timed("dns", "degraded", 9000, T0 + 2 * MINUTE, true)]);
+  // Only a timeout: the run counts for uptime but adds no latency sample.
+  record(T0 + 3 * MINUTE, [timed("http", "down", 7000, T0 + 3 * MINUTE)]);
+
+  const latency = store.history(T0 + 30 * MINUTE).get("signup")?.latency ?? [];
+  assert.equal(latency.length, 24);
+  assert.deepEqual(latency[23], { hour: "2026-11-11T14:00:00.000Z", avgMs: 183, maxMs: 300 }, "the current hour is last; avg rounds (300+200+50)/3");
+  assert.deepEqual(latency[20], { hour: "2026-11-11T11:00:00.000Z", avgMs: 40, maxMs: 40 });
+  assert.deepEqual(latency[0], { hour: "2026-11-10T15:00:00.000Z", avgMs: null, maxMs: null }, "24 hours back is out of the window");
+  assert.deepEqual(latency[22], { hour: "2026-11-11T13:00:00.000Z", avgMs: null, maxMs: null });
+  assert.equal(latency.filter((hour) => hour.avgMs !== null).length, 2);
+  const row = storage.db.prepare("SELECT total, up, latency_sum, latency_count, latency_max FROM component_hourly WHERE component_id = 'signup' AND hour = ?")
+    .get(Math.floor(T0 / HOUR));
+  assert.deepEqual({ ...row }, { total: 4, up: 2, latency_sum: 550, latency_count: 3, latency_max: 300 }, "the timeout-only run counted no sample");
+});
+
+void test("store: a store at the previous schema version migrates to the latency columns and keeps its hourly rows", () => {
+  const storage = sqliteStorage();
+  storage.db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  for (const migration of MIGRATIONS.slice(0, -1)) {
+    for (const statement of migration.split(";").map((part) => part.trim()).filter((part) => part !== "")) storage.db.exec(statement);
+  }
+  storage.db.exec(`INSERT INTO meta (key, value) VALUES ('schema_version', '${String(MIGRATIONS.length - 1)}')`);
+  storage.db.exec(`INSERT INTO component_hourly (component_id, hour, total, up) VALUES ('signup', ${String(Math.floor(T0 / HOUR))}, 4, 3),
+    ('signup', ${String(Math.floor((T0 - DAY) / HOUR))}, 60, 60)`);
+  const store = new MonitorStore(storage, countingRandom());
+  assert.equal(store.getMeta("schema_version"), String(MIGRATIONS.length));
+  const before = store.history(T0 + 30 * MINUTE).get("signup");
+  assert.ok(before !== undefined);
+  assert.deepEqual(before.history.slice(28), [{ date: "2026-11-10", uptime: 100 }, { date: "2026-11-11", uptime: 75 }], "old rollups still count");
+  assert.deepEqual(before.latency[23], { hour: "2026-11-11T14:00:00.000Z", avgMs: null, maxMs: null }, "an hour rolled up before has no samples");
+  assert.deepEqual(store.uptime(T0 + 30 * MINUTE).get("signup")?.h24, 75);
+  store.recordRun([timed("http", "ok", 120, T0 + MINUTE)], targets, policy, T0 + MINUTE);
+  const after = store.history(T0 + 30 * MINUTE).get("signup");
+  assert.ok(after !== undefined);
+  assert.deepEqual(after.history[29], { date: "2026-11-11", uptime: 80 });
+  assert.deepEqual(after.latency[23], { hour: "2026-11-11T14:00:00.000Z", avgMs: 120, maxMs: 120 }, "only the new sample counts");
+});
+
 void test("store: config errors are recorded for the status page", () => {
   const { store } = newStore();
   store.recordConfigError("policy: must be an object", T0);

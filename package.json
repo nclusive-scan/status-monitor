@@ -1,6 +1,6 @@
 {
   "name": "status-monitor",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Serverless uptime monitor and pager on Cloudflare Workers: tiered escalation, SMS-reply acknowledgement, signed deep health checks and a status page.",
   "private": true,
   "license": "Apache-2.0",

@@ -9,6 +9,7 @@ import { messageContext } from "../worker/deliver.ts";
 import { smsText } from "../worker/notify/messages.ts";
 import { MIGRATIONS } from "../worker/schema.ts";
 import type { SqlLike, StorageLike } from "../worker/schema.ts";
+import { privateProjection, publicProjection } from "../worker/redact.ts";
 import { fullSnapshot, publicSnapshot, TimedCache } from "../worker/status-view.ts";
 import { GROUP_WINDOW_MS, MonitorStore } from "../worker/store.ts";
 import type { CheckResult, Status } from "../worker/types.ts";
@@ -264,6 +265,7 @@ void test("/api/status reads no run history or logs and is cached; the failure l
   assert.ok(seen.length > 0);
   assert.deepEqual(seen.filter((query) => /check_results|check_latest|outbox|incident_events|\bruns\b/.test(query)), [],
     "the public path touches only meta, components, component_hourly and incidents");
+  assert.ok(seen.some((query) => /FROM component_hourly/.test(query) && /latency_max/.test(query)), "the latency history comes from the rollups");
   const full = fullSnapshot(watched, loaded, T0 + 2 * MINUTE);
   assert.ok(full.notifications.length > 0, "the operator view still has everything");
 
@@ -278,6 +280,33 @@ void test("/api/status reads no run history or logs and is cached; the failure l
   cache.invalidate();
   cache.get(T0 + 15_001, build);
   assert.equal(builds, 3, "rebuilt at once after a state change");
+});
+
+void test("/api/status and /api/private give every component 30 days of uptime and 24 hours of latency, all null without runs", () => {
+  const { store } = newStore();
+  // Every component but the first reports (10 ms each); the first has no rollups at all.
+  const silent = targets.components[0]?.id ?? "";
+  store.recordRun(run(T0, []).filter((item) => item.componentId !== silent), targets, policy, T0);
+  const loaded = { ok: true, config: monitorConfig } as const;
+  const view = publicProjection(publicSnapshot(store, loaded, T0 + MINUTE));
+  assert.ok(view.components.length > 1);
+  for (const component of view.components) {
+    assert.equal(component.history.length, 30, component.id);
+    assert.equal(component.latency.length, 24, component.id);
+    assert.equal(component.history[0]?.date, "2026-10-13");
+    assert.equal(component.latency[0]?.hour, "2026-11-10T15:00:00.000Z");
+    const reported = component.id !== silent;
+    assert.deepEqual(component.history[29], { date: "2026-11-11", uptime: reported ? 100 : null });
+    assert.deepEqual(component.latency[23], { hour: "2026-11-11T14:00:00.000Z", avgMs: reported ? 10 : null, maxMs: reported ? 10 : null });
+    assert.ok(component.history.slice(0, 29).every((day) => day.uptime === null));
+  }
+  const full = privateProjection(fullSnapshot(store, loaded, T0 + MINUTE))["components"];
+  assert.ok(Array.isArray(full) && full.length === targets.components.length);
+  assert.deepEqual(full.map((component: unknown) => {
+    const history: unknown = typeof component === "object" && component !== null ? Reflect.get(component, "history") : null;
+    const latency: unknown = typeof component === "object" && component !== null ? Reflect.get(component, "latency") : null;
+    return [Array.isArray(history) ? history.length : null, Array.isArray(latency) ? latency.length : null];
+  }), targets.components.map(() => [30, 24]), "the operator view carries the same history");
 });
 
 void test("a version 1 database migrates: existing incidents become their own group and keep working", () => {

@@ -12,7 +12,7 @@ const dist = join(site, "dist");
 rmSync(dist, { recursive: true, force: true });
 cpSync(join(site, "public"), dist, { recursive: true });
 execFileSync(join(root, "node_modules", ".bin", "tsc"), ["-p", join(site, "tsconfig.json")], { stdio: "inherit" });
-for (const file of ["index.html", "styles.css", "_headers", "app.js", "model.js", "operator.js"]) {
+for (const file of ["index.html", "styles.css", "_headers", "app.js", "charts.js", "model.js", "operator.js", "fonts/Geist-Variable.woff2"]) {
   if (!existsSync(join(dist, file))) throw new Error(`STATUS_PAGE_BUILD_INCOMPLETE:${file}`);
 }
 console.log(`Status page built: ${dist}`);

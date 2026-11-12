@@ -294,6 +294,7 @@ const snapshot = (now: number, lastRunAt: number | null): Snapshot => ({
     state: { ...initialComponentState("signup"), status: "down", since: T0 },
   }],
   uptime: new Map([["signup", { h24: 99.5, d7: 99.9, d30: 99.95 }]]),
+  history: new Map(),
   incidents: [incident],
   checks: [{ checkId: "platform_deep", componentId: "platform_api", type: "deep", status: "ok", inconclusive: false, latencyMs: 12, detail: "ok",
     observedAt: T0, data: { url: "https://platform.example.com/api/v2/monitor/health", release: { version: "1.4.2" } } }],

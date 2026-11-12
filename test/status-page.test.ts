@@ -7,7 +7,7 @@ import test from "node:test";
 import type { MonitorBinding, ResponseCache, RouterDeps } from "../status-page/worker/router.ts";
 import { handle, MAX_BODY_BYTES } from "../status-page/worker/router.ts";
 import type { PublicStatus } from "../status-page/src/model.ts";
-import { DEFAULT_SITE_NAME, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
+import { band, dayViews, DEFAULT_SITE_NAME, duration, isPublicStatus, siteName, summarize, UNAVAILABLE_HEADLINE, unavailable } from "../status-page/src/model.ts";
 import { focusAfterSwap, monitorFacts, refreshFailedText, warningText } from "../status-page/src/operator.ts";
 import { ADOPTED_STATUS_HOST, adoptedMonitorWrangler, adoptedStatusPageWrangler } from "./support/adopted.ts";
 
@@ -447,4 +447,46 @@ void test("operator view: standalone names its source and leaves out the platfor
   const platform = new Map(monitorFacts({ config: { mode: "platform", source: "platform", revision: 7 } }, fmt));
   assert.equal(platform.get("Config source"), "Platform revision 7");
   assert.equal(platform.has("Report to the platform"), true);
+});
+
+void test("page model: a day is operational from 99.95 %, degraded from 99 %, an outage below, and blank with no runs", () => {
+  assert.deepEqual([band(100), band(99.95), band(99.949), band(99), band(98.99), band(null)], ["ok", "ok", "degraded", "degraded", "down", "none"]);
+});
+
+void test("page model: the uptime bars are always 30 UTC days ending today, filled from whatever history arrived", () => {
+  const days = dayViews([{ date: "2026-11-12", uptime: 99.5 }, { date: "2026-10-01", uptime: 1 }], "2026-11-12T15:00:00.000Z");
+  assert.equal(days.length, 30);
+  assert.equal(days[0]?.date, "2026-10-14");
+  assert.deepEqual(days.at(-1), { date: "2026-11-12", uptime: 99.5, band: "degraded" });
+  assert.equal(days.filter((day) => day.band === "none").length, 29, "a date outside the window is ignored");
+  assert.equal(dayViews(undefined, "2026-11-12T15:00:00.000Z").length, 30, "an older monitor without history still gets 30 blank days");
+});
+
+void test("page model: incident durations read as people say them", () => {
+  assert.deepEqual([duration(45_000), duration(14 * 60_000), duration(125 * 60_000), duration(120 * 60_000), duration(76 * 3600_000)],
+    ["45 s", "14 min", "2 h 5 min", "2 h", "3 d 4 h"]);
+});
+
+void test("page model: headline numbers average the public components and count the last 30 days' incidents", () => {
+  const fmt = (iso: string | null): string => iso ?? "—";
+  const hour = (h: number, ms: number | null) => ({ hour: `2026-11-12T${String(h).padStart(2, "0")}:00:00.000Z`, avgMs: ms, maxMs: ms });
+  const summary = summarize({
+    overall: "ok", generatedAt: "2026-11-12T15:00:00.000Z", monitor: { lastRunAt: "2026-11-12T14:59:00.000Z", stale: false },
+    components: [
+      { id: "a", name: "A", status: "ok", since: null, uptime: { h24: 100, d7: 100, d30: 99.9 }, latency: [hour(13, 100), hour(14, 300)] },
+      { id: "b", name: "B", status: "degraded", since: null, uptime: { h24: 99, d7: 99, d30: 99.5 }, latency: [hour(13, null), hour(14, 200)] },
+    ],
+    incidents: [
+      { id: "1", component: "A", title: "A is down", startedAt: "2026-11-10T10:00:00.000Z", acknowledged: true, resolved: true, resolvedAt: "2026-11-10T10:31:00.000Z" },
+      { id: "2", component: "B", title: "B is down", startedAt: "2026-09-01T10:00:00.000Z", acknowledged: true, resolved: true, resolvedAt: "2026-09-01T11:00:00.000Z" },
+    ],
+  }, fmt);
+  const stats = summary.stats;
+  assert.ok(stats);
+  assert.equal(stats.uptime30, 99.7);
+  assert.equal(stats.latency24, 200, "the mean of the hours that were measured");
+  assert.equal(stats.incidents30, 1, "an incident from September is outside the window");
+  assert.deepEqual([stats.operational, stats.total], [1, 2]);
+  assert.equal(summary.components[1]?.latencyNow, 200);
+  assert.equal(summary.timeline?.past[0]?.detail, "Resolved 2026-11-10T10:31:00.000Z · 31 min");
 });
