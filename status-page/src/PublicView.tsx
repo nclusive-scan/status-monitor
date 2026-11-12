@@ -45,6 +45,8 @@ const ORB: Readonly<Record<Shown, string>> = {
 function Hero({ summary, now, loadedAt }: { summary: Summary; now: number; loadedAt: number | null }): React.JSX.Element {
   const operational = summary.stats === null ? null : `${String(summary.stats.operational)} of ${String(summary.stats.total)} services operational`;
   const checks = summary.components.reduce((total, component) => total + component.checks.length, 0);
+  // A stale monitor or a failed load shows every check as unknown: that is not "all passing".
+  const unknown = summary.components.some((component) => component.checks.some((check) => check.shown === "unknown"));
   const nextRefresh = loadedAt === null ? null : Math.max(0, Math.ceil((loadedAt + 30_000 - now) / 1000));
   return (
     <Shell className="max-w-none">
@@ -71,8 +73,8 @@ function Hero({ summary, now, loadedAt }: { summary: Summary; now: number; loade
           <Fact icon={HeartbeatIcon} label="Last check" value={ago(summary.lastRunAt, now)} tone={summary.stale ? "negative" : "positive"}
             detail={summary.stale ? "Monitor delayed" : "Monitor running"} />
           <Fact icon={ListChecksIcon} label="Checks" value={String(checks)}
-            detail={checks === 0 ? "None listed" : summary.attention.length === 0 ? "All passing" : `${String(summary.attention.length)} not passing`}
-            {...(checks === 0 ? {} : { tone: summary.attention.length === 0 ? "positive" as const : "negative" as const })} />
+            detail={checks === 0 ? "None listed" : summary.attention.length > 0 ? `${String(summary.attention.length)} not passing` : unknown ? "Status unknown" : "All passing"}
+            {...(checks === 0 || (unknown && summary.attention.length === 0) ? {} : { tone: summary.attention.length === 0 ? "positive" as const : "negative" as const })} />
           <Fact icon={ShieldCheckIcon} label="Services" value={String(summary.components.length)} detail={summary.overall === "none" ? "None published yet" : "Monitored"} />
           <Fact icon={ClockCounterClockwiseIcon} label="Page refresh" value={nextRefresh === null ? "—" : `${String(nextRefresh)} s`} detail="Updates every 30 s" />
         </dl>
