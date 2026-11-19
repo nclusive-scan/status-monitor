@@ -22,7 +22,7 @@
     "dry-run:status-page": "npm run build:status-page && wrangler deploy --dry-run --config status-page/wrangler.jsonc --outdir \"$PWD/dist/status-page\""
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "5.20261027.1",
+    "@cloudflare/workers-types": "5.20261116.1",
     "@phosphor-icons/react": "2.1.10",
     "@tailwindcss/vite": "4.3.3",
     "@types/node": "24.19.2",
