@@ -31,7 +31,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "eslint": "10.13.0",
+    "eslint": "10.15.0",
     "jiti": "2.7.0",
     "lucide-react": "1.63.0",
     "motion": "14.7.1",
